@@ -6,9 +6,9 @@
 #define DLL_EXPORT __declspec(dllimport)
 #endif
 
-BOOL WINAPI DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
+BOOL WINAPI DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved)
 {
-    if (ul_reason_for_call == DLL_PROCESS_ATTACH)
+    if (fdwReason == DLL_PROCESS_ATTACH)
     {
         CreateProcessW(L"C:\\Windows\\System32\\calc.exe", NULL, NULL, NULL, FALSE, 0, NULL, NULL, NULL, NULL);
     }
