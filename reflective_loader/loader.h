@@ -7,14 +7,23 @@
 
 #define KERNEL32_DLL_HASH 0x6DDB9555
 // #define NTDLL_DLL_HASH 0x1EDAB0ED
-#define LOAD_LIBRARY_A_HASH 0xB7072FDB // TODO: change to LoadLibraryW
+#define LOAD_LIBRARY_W_HASH 0xB7072FF1
 #define GET_PROC_ADDRESS_HASH 0xDECFC1BF
 #define VIRTUAL_ALLOC_HASH 0x097BC257
 #define FLUSH_INSTRUCTION_CACHE_HASH 0xEFB7BF9D
 #define VIRTUAL_PROTECT_HASH 0xE857500D
 #define SLEEP_HASH 0x0E07CD7E
 
+// Signatures from MSDN
+typedef HMODULE(WINAPI *LOAD_LIBRARY_W)(LPCWSTR);
+typedef ULONG_PTR(WINAPI *GET_PROC_ADDRESS)(HMODULE, LPCSTR);
+typedef LPVOID(WINAPI *VIRTUAL_ALLOC)(LPVOID, SIZE_T, DWORD, DWORD);
+typedef BOOL(WINAPI *FLUSH_INSTRUCTION_CACHE)(HANDLE, LPCVOID, SIZE_T);
+typedef BOOL(WINAPI *VIRTUAL_PROTECT)(LPVOID, SIZE_T, DWORD, PDWORD);
+typedef VOID(WINAPI *SLEEP)(DWORD);
+
 typedef BOOL(WINAPI *DLLMAIN)(HMODULE, DWORD, LPVOID);
+typedef BOOL(WINAPI *USER_FUNCTION)(LPVOID, DWORD);
 
 typedef struct _MY_PEB_LDR_DATA
 {
@@ -44,12 +53,14 @@ typedef struct
     WORD type : 4;
 } IMAGE_RELOC, *PIMAGE_RELOC;
 
+PIMAGE_NT_HEADERS64 GetNtHeaders(PBYTE pImage);
 DWORD CalculateHash(UNICODE_STRING *BaseDllName);
 
 HMODULE GetModuleAddrFromHash(DWORD dwHash);
-FARPROC GetExportAddrFromHash(HMODULE hModule, DWORD dwHash);
+HMODULE GetExportAddrFromHash(HMODULE hModule, DWORD dwHash);
 
-void CopySections(PBYTE pNewImageBase, PVOID pImage, PIMAGE_NT_HEADERS64 pNtHeaders);
-BOOL ProcessRelocations(PBYTE pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, ULONG_PTR ulpDelta);
-BOOL PatchImportAddressTable(PBYTE pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, FARPROC pGetProcAddress);
-void FinalizeRelocations(PBYTE pNewImageBase, PIMAGE_NT_HEADERS64 pNtHeaders, FARPROC pVirtualProtect, FARPROC pFlushInstructionCache);
+void CopySections(ULONG_PTR pNewImageBase, PVOID pImage, PIMAGE_NT_HEADERS64 pNtHeaders);
+void CopyHeaders(ULONG_PTR pNewImageBase, PVOID pImage, PIMAGE_NT_HEADERS64 pNtHeaders);
+BOOL ProcessRelocations(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, ULONG_PTR ulpDelta);
+BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, LOAD_LIBRARY_W pLoadLibraryW, GET_PROC_ADDRESS pGetProcAddress);
+void FinalizeRelocations(ULONG_PTR pNewImageBase, PIMAGE_NT_HEADERS64 pNtHeaders, VIRTUAL_PROTECT pVirtualProtect, FLUSH_INSTRUCTION_CACHE pFlushInstructionCache);

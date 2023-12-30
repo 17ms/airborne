@@ -20,14 +20,14 @@ void Load(PBYTE pImage, DWORD dwFunctionHash, PVOID pvUserData, DWORD dwUserData
         return;
     }
 
-    FARPROC pLoadLibraryA = GetExportAddrFromHash(hKernel32, LOAD_LIBRARY_A_HASH);
-    FARPROC pGetProcAddress = GetExportAddrFromHash(hKernel32, GET_PROC_ADDRESS_HASH);
-    FARPROC pVirtualAlloc = GetExportAddrFromHash(hKernel32, VIRTUAL_ALLOC_HASH);
-    FARPROC pFlushInstructionCache = GetExportAddrFromHash(hKernel32, FLUSH_INSTRUCTION_CACHE_HASH);
-    FARPROC pVirtualProtect = GetExportAddrFromHash(hKernel32, VIRTUAL_PROTECT_HASH);
-    FARPROC pSleep = GetExportAddrFromHash(hKernel32, SLEEP_HASH);
+    LOAD_LIBRARY_W pLoadLibraryW = (LOAD_LIBRARY_W)GetExportAddrFromHash(hKernel32, LOAD_LIBRARY_W_HASH);
+    GET_PROC_ADDRESS pGetProcAddress = (GET_PROC_ADDRESS)GetExportAddrFromHash(hKernel32, GET_PROC_ADDRESS_HASH);
+    VIRTUAL_ALLOC pVirtualAlloc = (VIRTUAL_ALLOC)GetExportAddrFromHash(hKernel32, VIRTUAL_ALLOC_HASH);
+    FLUSH_INSTRUCTION_CACHE pFlushInstructionCache = (FLUSH_INSTRUCTION_CACHE)GetExportAddrFromHash(hKernel32, FLUSH_INSTRUCTION_CACHE_HASH);
+    VIRTUAL_PROTECT pVirtualProtect = (VIRTUAL_PROTECT)GetExportAddrFromHash(hKernel32, VIRTUAL_PROTECT_HASH);
+    SLEEP pSleep = (SLEEP)GetExportAddrFromHash(hKernel32, SLEEP_HASH);
 
-    if (!pLoadLibraryA || !pGetProcAddress || !pVirtualAlloc || !pFlushInstructionCache || !pVirtualProtect || !pSleep)
+    if (!pLoadLibraryW || !pGetProcAddress || !pVirtualAlloc || !pFlushInstructionCache || !pVirtualProtect || !pSleep)
     {
         return;
     }
@@ -58,16 +58,16 @@ void Load(PBYTE pImage, DWORD dwFunctionHash, PVOID pvUserData, DWORD dwUserData
     ULONGLONG ullPreferredImageBase = pNtHeaders->OptionalHeader.ImageBase;
 
     // Try to allocate the image to the preferred base address
-    PBYTE pNewImageBase = (PBYTE)pVirtualAlloc((LPVOID)ullPreferredImageBase, dwImageSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    ULONG_PTR pNewImageBase = (ULONG_PTR)pVirtualAlloc((LPVOID)ullPreferredImageBase, dwImageSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
     if (!pNewImageBase)
     {
         // Allocate to a random address if the preferred base address is already occupied
-        pNewImageBase = (PBYTE)pVirtualAlloc(NULL, dwImageSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+        pNewImageBase = (ULONG_PTR)pVirtualAlloc(NULL, dwImageSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     }
 
     CopySections(pNewImageBase, pImage, pNtHeaders);
-    memcpy(pNewImageBase, pImage, pNtHeaders->OptionalHeader.SizeOfHeaders);
+    CopyHeaders(pNewImageBase, pImage, pNtHeaders);
 
     /*
         3.) Process the image relocations (assumes the image couldn't be loaded to the preferred base address)
@@ -85,7 +85,7 @@ void Load(PBYTE pImage, DWORD dwFunctionHash, PVOID pvUserData, DWORD dwUserData
         4.) Resolve the imports by patching the Import Address Table (IAT)
     */
 
-    if (!PatchImportAddressTable(pNewImageBase, pDataDirectory, pGetProcAddress))
+    if (!PatchImportAddressTable(pNewImageBase, pDataDirectory, pLoadLibraryW, pGetProcAddress))
     {
         return;
     }
@@ -109,19 +109,19 @@ void Load(PBYTE pImage, DWORD dwFunctionHash, PVOID pvUserData, DWORD dwUserData
     else
     {
         // Execute user defined function
-        FARPROC pFunction = GetExportAddrFromHash((HMODULE)pNewImageBase, dwFunctionHash);
+        USER_FUNCTION pFunction = (USER_FUNCTION)GetExportAddrFromHash((HMODULE)pNewImageBase, dwFunctionHash);
         pFunction(pvUserData, dwUserDataLen);
     }
 }
 
-void FinalizeRelocations(PBYTE pNewImageBase, PIMAGE_NT_HEADERS64 pNtHeaders, FARPROC pVirtualProtect, FARPROC pFlushInstructionCache)
+void FinalizeRelocations(ULONG_PTR pNewImageBase, PIMAGE_NT_HEADERS64 pNtHeaders, VIRTUAL_PROTECT pVirtualProtect, FLUSH_INSTRUCTION_CACHE pFlushInstructionCache)
 {
     PIMAGE_SECTION_HEADER pSectionHeader = IMAGE_FIRST_SECTION(pNtHeaders);
 
     for (size_t i = 0; i < pNtHeaders->FileHeader.NumberOfSections; pSectionHeader++, i++)
     {
         DWORD dwOldProtect;
-        DWORD dwNewProtect;
+        DWORD dwNewProtect = 0;
 
         // Definitions for readability
         DWORD dwIsExecutable = (pSectionHeader->Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0;
@@ -168,13 +168,13 @@ void FinalizeRelocations(PBYTE pNewImageBase, PIMAGE_NT_HEADERS64 pNtHeaders, FA
             dwNewProtect = PAGE_EXECUTE_READWRITE;
         }
 
-        pVirtualProtect(pNewImageBase + pSectionHeader->VirtualAddress, pSectionHeader->SizeOfRawData, dwNewProtect, &dwOldProtect);
+        pVirtualProtect((LPVOID)(pNewImageBase + pSectionHeader->VirtualAddress), pSectionHeader->SizeOfRawData, dwNewProtect, &dwOldProtect);
     }
 
-    pFlushInstructionCache(-1, NULL, 0);
+    pFlushInstructionCache((HANDLE)-1, NULL, 0);
 }
 
-BOOL PatchImportAddressTable(PBYTE pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, FARPROC pGetProcAddress)
+BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, LOAD_LIBRARY_W pLoadLibraryW, GET_PROC_ADDRESS pGetProcAddress)
 {
     PIMAGE_IMPORT_DESCRIPTOR pImportDescriptor = (PIMAGE_IMPORT_DESCRIPTOR)(pNewImageBase + pDataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 
@@ -194,7 +194,7 @@ BOOL PatchImportAddressTable(PBYTE pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDir
 
     while (pImportDescriptor->Name)
     {
-        HMODULE hModule = pLoadLibraryA((LPCSTR)(pNewImageBase + pImportDescriptor->Name));
+        HMODULE hModule = pLoadLibraryW((LPCWSTR)(pNewImageBase + pImportDescriptor->Name));
 
         if (!hModule)
         {
@@ -228,7 +228,7 @@ BOOL PatchImportAddressTable(PBYTE pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDir
     return TRUE;
 }
 
-BOOL ProcessRelocations(PBYTE pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, ULONG_PTR ulpDelta)
+BOOL ProcessRelocations(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, ULONG_PTR ulpDelta)
 {
     PIMAGE_BASE_RELOCATION pRelocation = (PIMAGE_BASE_RELOCATION)(pNewImageBase + pDataDirectory->VirtualAddress);
 
@@ -278,30 +278,40 @@ BOOL ProcessRelocations(PBYTE pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirector
     return TRUE;
 }
 
-void CopySections(PBYTE pNewImageBase, PVOID pImage, PIMAGE_NT_HEADERS64 pNtHeaders)
+void CopySections(ULONG_PTR pNewImageBase, PVOID pImage, PIMAGE_NT_HEADERS64 pNtHeaders)
 {
     PIMAGE_SECTION_HEADER pSectionHeader = IMAGE_FIRST_SECTION(pNtHeaders);
-    PBYTE pSectionBase, pSectionData;
 
     for (size_t i = 0; i < pNtHeaders->FileHeader.NumberOfSections; pSectionHeader++, i++)
     {
-        pSectionBase = pNewImageBase + pSectionHeader->VirtualAddress;
-        pSectionData = pImage + pSectionHeader->PointerToRawData;
+        for (size_t j = 0; j < pSectionHeader->SizeOfRawData; j++)
+        {
+            *((PBYTE)pNewImageBase + pSectionHeader->VirtualAddress + j) = *((PBYTE)pImage + pSectionHeader->PointerToRawData + j);
+        }
+    }
+}
 
-        memcpy(pSectionBase, pSectionData, pSectionHeader->SizeOfRawData);
+void CopyHeaders(ULONG_PTR pNewImageBase, PVOID pImage, PIMAGE_NT_HEADERS64 pNtHeaders)
+{
+    for (size_t i = 0; i < pNtHeaders->OptionalHeader.SizeOfHeaders; i++)
+    {
+        *((PBYTE)pNewImageBase + i) = *((PBYTE)pImage + i);
     }
 }
 
 HMODULE GetModuleAddrFromHash(DWORD dwHash)
 {
+    // https://en.wikipedia.org/wiki/Win32_Thread_Information_Block
 #if defined(_WIN64)
+    // PEB is located at GS:[0x60]
     PPEB pPeb = (PPEB)__readgsqword(0x60);
 #else
+    // PEB is located at FS:[0x30]
     PPEB pPeb = (PPEB)__readfsdword(0x30);
 #endif
 
-    PMY_PEB_LDR_DATA pLdr = pPeb->Ldr;
-    PMY_LDR_DATA_TABLE_ENTRY pEntry = pLdr->InLoadOrderModuleList.Flink;
+    PMY_PEB_LDR_DATA pLdr = (PMY_PEB_LDR_DATA)pPeb->Ldr;
+    PMY_LDR_DATA_TABLE_ENTRY pEntry = (PMY_LDR_DATA_TABLE_ENTRY)pLdr->InLoadOrderModuleList.Flink;
     DWORD dwModuleHash;
     UNICODE_STRING strBaseDllName;
 
@@ -315,13 +325,13 @@ HMODULE GetModuleAddrFromHash(DWORD dwHash)
             return pEntry->DllBase;
         }
 
-        pEntry = pEntry->InLoadOrderLinks.Flink;
+        pEntry = (PMY_LDR_DATA_TABLE_ENTRY)pEntry->InLoadOrderLinks.Flink;
     }
 
     return NULL;
 }
 
-FARPROC GetExportAddrFromHash(HMODULE hModule, DWORD dwHash)
+HMODULE GetExportAddrFromHash(HMODULE hModule, DWORD dwHash)
 {
     PIMAGE_NT_HEADERS64 pNtHeaders = GetNtHeaders((PBYTE)hModule);
 
@@ -347,9 +357,11 @@ FARPROC GetExportAddrFromHash(HMODULE hModule, DWORD dwHash)
             wOrdinal = ((WORD *)((PBYTE)hModule + pExportDirectoryData->AddressOfNameOrdinals))[i];
             dwFuncRva = ((DWORD *)((PBYTE)hModule + pExportDirectoryData->AddressOfFunctions))[wOrdinal];
 
-            return (FARPROC)((PBYTE)hModule + dwFuncRva);
+            return (HMODULE)((PBYTE)hModule + dwFuncRva);
         }
     }
+
+    return NULL;
 }
 
 PIMAGE_NT_HEADERS64 GetNtHeaders(PBYTE pImage)
