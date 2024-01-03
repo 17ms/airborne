@@ -18,7 +18,7 @@ else()
 endif()
 
 # *) Reflective loader (DLL)
-add_library(reflective_loader SHARED reflective_loader/loader.cpp reflective_loader/loader.hpp)
+add_library(loader SHARED reflective_loader/loader.cpp reflective_loader/loader.hpp)
 
 # *) Payload (DLL)
 add_library(payload SHARED payload/payload.cpp)
@@ -27,4 +27,4 @@ add_library(payload SHARED payload/payload.cpp)
 add_executable(injector injector/injector.cpp)
 
 # *) Shellcode generator (EXE)
-# add_executable(shellcode_generator shellcode_generator/generator.c)
+add_executable(generator generator/generator.cpp)
