@@ -23,8 +23,8 @@ add_library(loader SHARED reflective_loader/loader.cpp reflective_loader/loader.
 # *) Payload (DLL)
 add_library(payload SHARED payload/payload.cpp)
 
+# *) Shellcode generator (EXE)
+add_executable(generator generator/generator.cpp generator/generator.hpp)
+
 # *) Injector (EXE)
 add_executable(injector injector/injector.cpp)
-
-# *) Shellcode generator (EXE)
-add_executable(generator generator/generator.cpp)
