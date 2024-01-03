@@ -4,7 +4,8 @@
 #include <winternl.h>
 #include <random>
 
-#define IMPORT_DELAY 6 * 1000 // 6 seconds
+#define MAX_IMPORT_DELAY_MS 6 * 1000
+#define OBFUSCATE_IMPORTS 1
 #define HASH_KEY 5381
 
 #define KERNEL32_DLL_HASH 0x6DDB9555
@@ -72,5 +73,5 @@ DWORD CalculateHash(const UNICODE_STRING &baseDllName);
 // Loader functions
 void CopyHeadersAndSections(ULONG_PTR pNewImageBase, PBYTE pbImage, PIMAGE_NT_HEADERS64 pNtHeaders);
 BOOL ProcessRelocations(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, ULONG_PTR ulpDelta);
-BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, LOAD_LIBRARY_W pLoadLibraryW, GET_PROC_ADDRESS pGetProcAddress, std::mt19937 &eng);
+BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, LOAD_LIBRARY_W pLoadLibraryW, GET_PROC_ADDRESS pGetProcAddress, SLEEP pSleep, std::mt19937 &eng);
 void FinalizeRelocations(ULONG_PTR pNewImageBase, PIMAGE_NT_HEADERS64 pNtHeaders, VIRTUAL_PROTECT pVirtualProtect, FLUSH_INSTRUCTION_CACHE pFlushInstructionCache);

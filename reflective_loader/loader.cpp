@@ -95,7 +95,7 @@ void Load(PBYTE pImage, DWORD dwFunctionHash, PVOID pvUserData, DWORD dwUserData
         4.) Resolve the imports by patching the Import Address Table (IAT)
     */
 
-    if (!PatchImportAddressTable(pNewImageBase, pDataDir, pLoadLibraryW, pGetProcAddress, eng))
+    if (!PatchImportAddressTable(pNewImageBase, pDataDir, pLoadLibraryW, pGetProcAddress, pSleep, eng))
     {
         return;
     }
@@ -189,7 +189,7 @@ void FinalizeRelocations(ULONG_PTR pNewImageBase, PIMAGE_NT_HEADERS64 pNtHeaders
     pFlushInstructionCache(INVALID_HANDLE_VALUE, nullptr, 0);
 }
 
-BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, LOAD_LIBRARY_W pLoadLibraryW, GET_PROC_ADDRESS pGetProcAddress, std::mt19937 &eng)
+BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, LOAD_LIBRARY_W pLoadLibraryW, GET_PROC_ADDRESS pGetProcAddress, SLEEP pSleep, std::mt19937 &eng)
 {
     auto pImportDescriptor = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(pNewImageBase + pDataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 
@@ -200,8 +200,9 @@ BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDat
 
     /*
         1.) Shuffle Import Table entries
-        2.) Conditional execution based on ordinal/name
-        3.) Indirect function call via pointer
+        2.) Delay the relocation of each import a semirandom duration
+        3.) Conditional execution based on ordinal/name
+        4.) Indirect function call via pointer
     */
 
     int importCount = 0;
@@ -213,7 +214,10 @@ BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDat
         pId++;
     }
 
-    if (importCount > 1)
+    std::vector<std::pair<int, DWORD>> sleepDurations;
+    std::uniform_int_distribution<> sleepDist(1000, MAX_IMPORT_DELAY_MS);
+
+    if (importCount > 1 && OBFUSCATE_IMPORTS)
     {
         for (auto i = 0; i < importCount - 1; i++)
         {
@@ -224,6 +228,10 @@ BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDat
             auto tmp = pImportDescriptor[i];
             pImportDescriptor[i] = pImportDescriptor[j];
             pImportDescriptor[j] = tmp;
+
+            // Store unique sleep durations with their corresponding import index
+            auto sleepTime = sleepDist(eng);
+            sleepDurations.push_back(std::make_pair(i, sleepTime));
         }
     }
 
@@ -231,8 +239,20 @@ BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDat
     HMODULE hModule;
     PIMAGE_THUNK_DATA64 pThunkData, pThunkDataIat;
 
-    while (pImportDescriptor->Name)
+    for (auto i = 0; pImportDescriptor->Name; pImportDescriptor++, i++)
     {
+        // Apply delay
+        if (OBFUSCATE_IMPORTS)
+        {
+            auto it = std::find_if(sleepDurations.begin(), sleepDurations.end(), [i](const std::pair<int, DWORD> &pair)
+                                   { return pair.first == i; });
+
+            if (it != sleepDurations.end())
+            {
+                pSleep(it->second);
+            }
+        }
+
         pwszModuleName = reinterpret_cast<LPCWSTR>(pNewImageBase + pImportDescriptor->Name);
         hModule = pLoadLibraryW(pwszModuleName);
 
@@ -247,7 +267,7 @@ BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDat
         LPCSTR lpProcName;
         PIMAGE_IMPORT_BY_NAME pImportByName;
 
-        while (pThunkData->u1.Function)
+        for (auto j = 0; pThunkData->u1.Function; pThunkData++, pThunkDataIat++, j++)
         {
             if (pThunkData->u1.Ordinal & IMAGE_ORDINAL_FLAG64)
             {
@@ -262,12 +282,7 @@ BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDat
             }
 
             pThunkDataIat->u1.Function = reinterpret_cast<ULONGLONG>(pGetProcAddress(hModule, lpProcName));
-
-            pThunkData++;
-            pThunkDataIat++;
         }
-
-        pImportDescriptor++;
     }
 
     return TRUE;
