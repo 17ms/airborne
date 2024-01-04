@@ -10,11 +10,28 @@ if(NOT CMAKE_SYSTEM_NAME MATCHES Windows)
     message(FATAL_ERROR "Use a cross compilation suitable toolchain with CMAKE_SYSTEM_NAME set to Windows")
 endif()
 
-if(NOT MSVC)
-    add_compile_options("-Wall" "-Wextra")
+# Build as Release by default
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+include(CheckIPOSupported)
+check_ipo_supported(RESULT lto_supported OUTPUT error)
+
+# Enable LTO if supported
+if(lto_supported)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 else()
-    # Level 4 warnings
-    add_compile_options("/W4" "/WX")
+    message(WARNING "LTO is not supported: ${error}")
+endif()
+
+if(NOT MSVC)
+    add_compile_options("-Wall" "-Wextra" "-Os")
+    set(CMAKE_EXE_LINKED_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s")
+else()
+    add_compile_options("/W4" "/WX" "/O1" "/GL")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /INCREMENTAL:NO /OPT:REF /OPT:ICF /PDBSTRIPPED")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /INCREMENTAL:NO /OPT:REF /OPT:ICF /PDBSTRIPPED")
 endif()
 
 # *) Reflective loader (DLL)
@@ -28,3 +45,9 @@ add_executable(generator generator/generator.cpp generator/generator.hpp)
 
 # *) Injector (EXE)
 add_executable(injector injector/injector.cpp)
+
+if(NOT MSVC)
+    foreach(target loader payload generator injector)
+        add_custom_command(TARGET ${target} POST_BUILD COMMAND ${CMAKE_STRIP} $<TARGET_FILE:${target}>) # Strip binaries
+    endforeach()
+endif()

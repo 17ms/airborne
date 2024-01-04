@@ -9,13 +9,17 @@ case $(uname -a) in
         TOOLCHAIN="linux-mingw-w64-x86_64.cmake"
         ;;
     Darwin*)
-        echo "[+] Using MacOS toolchain"
-        TOOLCHAIN="macos-mingw-w64-x86_64.cmake"
+        echo "[+] Using Darwin toolchain"
+        TOOLCHAIN="darwin-mingw-w64-x86_64.cmake"
         ;;
 esac
 
-echo "Running CMake"
-cmake -DCMAKE_TOOLCHAIN_FILE=toolchains/$TOOLCHAIN -B build
+echo "[+] Running CMake with specified toolchain, outputting to build/"
+if ! cmake -DCMAKE_TOOLCHAIN_FILE=toolchains/$TOOLCHAIN -B build
+then
+    echo "[!] CMake failed, aborting build"
+    exit 1
+fi
 
-echo "Running Make with $USED threads"
+echo "[+] Running Make with $USED threads"
 make -j$USED -C build

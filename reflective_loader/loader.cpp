@@ -20,7 +20,6 @@ void Load(PBYTE pImage, DWORD dwFunctionHash, PVOID pvUserData, DWORD dwUserData
         return;
     }
 
-    // auto rng = std::default_random_engine{};
     std::random_device rd;
     std::mt19937 eng(rd());
 
