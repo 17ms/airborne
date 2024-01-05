@@ -6,7 +6,6 @@
 
 constexpr auto MAX_IMPORT_DELAY_MS = 6 * 1000;
 constexpr auto OBFUSCATE_IMPORTS = 1;
-constexpr auto HASH_KEY = 5381;
 
 constexpr DWORD KERNEL32_DLL_HASH = 0x6DDB9555;
 constexpr DWORD LOAD_LIBRARY_W_HASH = 0xB7072FF1;
@@ -67,7 +66,6 @@ using PIMAGE_RELOC = _IMAGE_RELOC *;
 PBYTE GetModuleAddressFromHash(DWORD dwHash);
 HMODULE GetExportAddrFromHash(PBYTE pbModule, DWORD dwHash, std::mt19937 &eng);
 PIMAGE_NT_HEADERS64 GetNtHeaders(PBYTE pbImage);
-DWORD CalculateHash(const UNICODE_STRING &baseDllName);
 
 // Loader functions
 void CopyHeadersAndSections(ULONG_PTR pNewImageBase, PBYTE pbImage, PIMAGE_NT_HEADERS64 pNtHeaders);

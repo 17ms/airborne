@@ -4,9 +4,9 @@
 #include <fstream>
 #include <vector>
 #include <cstdint>
-#include <iterator>
 
 #include "generator.hpp"
+#include "../shared/crypto.hpp"
 
 int main(int argc, char **argv)
 {
@@ -263,6 +263,11 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    auto srcUuid = GenerateUuid();
+    std::cout << "[+] AES key derivation UUID: " << srcUuid << std::endl;
+
+    std::cout << "[+]  " << std::endl;
+
     return 0;
 }
 
@@ -307,29 +312,6 @@ BOOL WriteFileContents(std::string filePath, LPBYTE fileContents, DWORD fileSize
     outfile.close();
 
     return TRUE;
-}
-
-DWORD CalculateHash(const std::string &source)
-{
-    auto dwHash = HASH_KEY;
-
-    for (char ch : source)
-    {
-        if (ch == '\0')
-        {
-            continue;
-        }
-
-        if (ch >= 'a' && ch <= 'z')
-        {
-            ch -= 0x20;
-        }
-
-        // Casting might be unnecessary
-        dwHash = ((dwHash << 5) + dwHash) + static_cast<DWORD>(ch);
-    }
-
-    return dwHash;
 }
 
 void PrintHelp(char **argv)

@@ -6,6 +6,7 @@
 #include <random>
 
 #include "loader.hpp"
+#include "../shared/crypto.hpp"
 
 void Load(PBYTE pImage, DWORD dwFunctionHash, PVOID pvUserData, DWORD dwUserDataLen, DWORD dwFlags)
 {
@@ -449,32 +450,4 @@ PIMAGE_NT_HEADERS64 GetNtHeaders(PBYTE pbImage)
     }
 
     return pNtHeaders;
-}
-
-DWORD CalculateHash(const UNICODE_STRING &baseDllName)
-{
-    auto pwszBaseDllName = baseDllName.Buffer;
-    auto dwHash = HASH_KEY;
-
-    char ch;
-
-    for (auto i = 0; i < baseDllName.MaximumLength; i++)
-    {
-        ch = pwszBaseDllName[i];
-
-        if (ch == '\0')
-        {
-            continue;
-        }
-
-        if (ch >= 'a' && ch <= 'z')
-        {
-            ch -= 0x20;
-        }
-
-        // Casting might be unnecessary
-        dwHash = ((dwHash << 5) + dwHash) + static_cast<DWORD>(ch);
-    }
-
-    return dwHash;
 }
