@@ -2,6 +2,8 @@
 
 Reflective DLL injection demo for fun and education. In practical applications, there's significant scope for enhancing build sizes, obfuscation, and delivery logic.
 
+[A blog post describing the technicalities of sRDI.](https://golfed.xyz/blog/understanding-srdi/)
+
 ### Project Structure
 
 ```shell
