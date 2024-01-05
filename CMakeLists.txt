@@ -6,6 +6,8 @@ project(
     LANGUAGES CXX
 )
 
+set(CMAKE_CXX_STANDARD 17)
+
 if(NOT CMAKE_SYSTEM_NAME MATCHES Windows)
     message(FATAL_ERROR "Use a cross compilation suitable toolchain with CMAKE_SYSTEM_NAME set to Windows")
 endif()
@@ -34,17 +36,23 @@ else()
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /INCREMENTAL:NO /OPT:REF /OPT:ICF /PDBSTRIPPED")
 endif()
 
+# *) Shared modules
+add_library(shared STATIC shared/crypto.cpp shared/crypto.hpp shared/futils.cpp shared/futils.hpp)
+
 # *) Reflective loader (DLL)
 add_library(loader SHARED reflective_loader/loader.cpp reflective_loader/loader.hpp)
+target_link_libraries(loader PRIVATE shared)
 
 # *) Payload (DLL)
 add_library(payload SHARED payload/payload.cpp)
 
 # *) Shellcode generator (EXE)
 add_executable(generator generator/generator.cpp generator/generator.hpp)
+target_link_libraries(generator PRIVATE shared)
 
 # *) Injector (EXE)
 add_executable(injector injector/injector.cpp)
+target_link_libraries(injector PRIVATE shared)
 
 if(NOT MSVC)
     foreach(target loader payload generator injector)

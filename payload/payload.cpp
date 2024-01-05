@@ -1,3 +1,5 @@
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 #include <windows.h>
 
 #ifdef BUILD_DLL

@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <winternl.h>
 #include <algorithm>
+#include <random>
 
 constexpr auto MAX_IMPORT_DELAY_MS = 6 * 1000;
 constexpr auto OBFUSCATE_IMPORTS = 1;

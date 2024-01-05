@@ -17,7 +17,7 @@ std::vector<BYTE> GenerateKey(size_t keysize)
 
 void XorCipher(std::vector<BYTE> &data, const std::vector<BYTE> &key)
 {
-    for (auto i = 0; i < data.size(); i++)
+    for (size_t i = 0; i < data.size(); i++)
     {
         data[i] = data[i] ^ key[i % key.size()];
     }
