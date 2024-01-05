@@ -1,12 +1,9 @@
 #pragma once
 
 #include <windows.h>
-#include <string>
+#include <getopt.h>
+#include <iostream>
 
-#define BOOTSTRAP_LEN 79
-
-// Utils
-BOOL GetFileContents(std::string filePath, LPBYTE *fileContents, DWORD *fileSize);
-BOOL WriteFileContents(std::string filePath, LPBYTE fileContents, DWORD fileSize);
+constexpr auto BOOTSTRAP_LEN = 79;
 
 void PrintHelp(char **argv);

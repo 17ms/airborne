@@ -1,10 +1,3 @@
-#include <windows.h>
-#include <winternl.h>
-#include <vector>
-#include <tuple>
-#include <algorithm>
-#include <random>
-
 #include "loader.hpp"
 #include "../shared/crypto.hpp"
 

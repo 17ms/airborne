@@ -1,41 +1,26 @@
-#include <winternl.h>
-#include <random>
-#include <sstream>
-
 #include "crypto.hpp"
 
-std::string GenerateUuid()
+std::vector<BYTE> GenerateKey(size_t keysize)
 {
-    // Source: https://stackoverflow.com/a/60198074/15310712
-
-    std::stringstream ss;
+    std::vector<BYTE> key(keysize, 0);
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, 15);
-    std::uniform_int_distribution<> dis2(8, 11);
+    std::uniform_int_distribution<> dis(0, 255);
 
-    ss << std::hex;
-
-    auto generateHex = [&](int count)
+    for (size_t i = 0; i < key.size(); ++i)
     {
-        for (int i = 0; i < count; ++i)
-        {
-            ss << dis(gen);
-        }
-    };
+        key[i] = static_cast<BYTE>(dis(gen));
+    }
 
-    generateHex(8);
-    ss << "-";
-    generateHex(4);
-    ss << "-4";
-    generateHex(3);
-    ss << "-";
-    ss << dis2(gen);
-    generateHex(3);
-    ss << "-";
-    generateHex(12);
+    return key;
+}
 
-    return ss.str();
+void XorCipher(std::vector<BYTE> &data, const std::vector<BYTE> &key)
+{
+    for (auto i = 0; i < data.size(); i++)
+    {
+        data[i] = data[i] ^ key[i % key.size()];
+    }
 }
 
 DWORD CalculateHash(const std::string &source)

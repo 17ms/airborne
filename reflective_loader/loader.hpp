@@ -2,7 +2,7 @@
 
 #include <windows.h>
 #include <winternl.h>
-#include <random>
+#include <algorithm>
 
 constexpr auto MAX_IMPORT_DELAY_MS = 6 * 1000;
 constexpr auto OBFUSCATE_IMPORTS = 1;
@@ -62,12 +62,10 @@ struct _IMAGE_RELOC
 using IMAGE_RELOC = _IMAGE_RELOC;
 using PIMAGE_RELOC = _IMAGE_RELOC *;
 
-// Utils
 PBYTE GetModuleAddressFromHash(DWORD dwHash);
 HMODULE GetExportAddrFromHash(PBYTE pbModule, DWORD dwHash, std::mt19937 &eng);
 PIMAGE_NT_HEADERS64 GetNtHeaders(PBYTE pbImage);
 
-// Loader functions
 void CopyHeadersAndSections(ULONG_PTR pNewImageBase, PBYTE pbImage, PIMAGE_NT_HEADERS64 pNtHeaders);
 BOOL ProcessRelocations(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, ULONG_PTR ulpDelta);
 BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, LOAD_LIBRARY_W pLoadLibraryW, GET_PROC_ADDRESS pGetProcAddress, SLEEP pSleep, std::mt19937 &eng);

