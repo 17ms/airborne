@@ -1,7 +1,8 @@
 #pragma once
 
-#include <windows.h>
 #include <getopt.h>
+#include <windows.h>
+
 #include <iostream>
 
 constexpr auto BOOTSTRAP_LEN = 79;

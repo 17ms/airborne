@@ -8,20 +8,17 @@
 #define DLL_EXPORT __declspec(dllimport)
 #endif
 
-BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
-{
-    if (dwReason == DLL_PROCESS_ATTACH)
-    {
-        CreateProcessW(L"C:\\Windows\\System32\\calc.exe", NULL, NULL, NULL, FALSE, 0, NULL, NULL, NULL, NULL);
-    }
+BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved) {
+  if (dwReason == DLL_PROCESS_ATTACH) {
+    CreateProcessW(L"C:\\Windows\\System32\\calc.exe", NULL, NULL, NULL, FALSE, 0, NULL, NULL, NULL, NULL);
+  }
 
-    return TRUE;
+  return TRUE;
 }
 
-BOOL PrintMessage(LPVOID lpUserData, DWORD dwUserDataSize)
-{
-    auto lpText = static_cast<LPCWSTR>(lpUserData);
-    MessageBoxW(NULL, lpText, L"Hello World!", MB_OK);
+BOOL PrintMessage(LPVOID lpUserData, DWORD dwUserDataSize) {
+  auto lpText = static_cast<LPCWSTR>(lpUserData);
+  MessageBoxW(NULL, lpText, L"Hello World!", MB_OK);
 
-    return TRUE;
+  return TRUE;
 }
