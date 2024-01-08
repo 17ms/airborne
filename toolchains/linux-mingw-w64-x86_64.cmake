@@ -1,6 +1,6 @@
 # Usage:
 #   *) Install cross-compiler: `sudo apt install mingw-w64`
-#   *) cmake -DCMAKE_TOOLCHAIN_FILE=macos-mingw-w64-x86_64.cmake -B build -S .
+#   *) cmake -DCMAKE_TOOLCHAIN_FILE=toolchains/linux-mingw-w64-x86_64.cmake -B build -S .
 #   *) make -C build
 
 set(CMAKE_SYSTEM_NAME Windows)
@@ -21,5 +21,6 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
+# General compiler flags
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static -Os -flto")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static -Os -flto")
