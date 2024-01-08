@@ -20,12 +20,12 @@ void Load(PBYTE pImage, DWORD dwFunctionHash, PVOID pvUserData, DWORD dwUserData
   std::random_device rd;
   std::mt19937 eng(rd());
 
-  auto pLoadLibraryW = reinterpret_cast<LOAD_LIBRARY_W>(GetExportAddrFromHash(pbKernel32Dll, LOAD_LIBRARY_W_HASH, eng));
-  auto pGetProcAddress = reinterpret_cast<GET_PROC_ADDRESS>(GetExportAddrFromHash(pbKernel32Dll, GET_PROC_ADDRESS_HASH, eng));
-  auto pVirtualAlloc = reinterpret_cast<VIRTUAL_ALLOC>(GetExportAddrFromHash(pbKernel32Dll, VIRTUAL_ALLOC_HASH, eng));
-  auto pFlushInstructionCache = reinterpret_cast<FLUSH_INSTRUCTION_CACHE>(GetExportAddrFromHash(pbKernel32Dll, FLUSH_INSTRUCTION_CACHE_HASH, eng));
-  auto pVirtualProtect = reinterpret_cast<VIRTUAL_PROTECT>(GetExportAddrFromHash(pbKernel32Dll, VIRTUAL_PROTECT_HASH, eng));
-  auto pSleep = reinterpret_cast<SLEEP>(GetExportAddrFromHash(pbKernel32Dll, SLEEP_HASH, eng));
+  auto pLoadLibraryW = reinterpret_cast<LOAD_LIBRARY_W>(GetExportAddrFromHash(pbKernel32Dll, LOAD_LIBRARY_W_HASH, &eng));
+  auto pGetProcAddress = reinterpret_cast<GET_PROC_ADDRESS>(GetExportAddrFromHash(pbKernel32Dll, GET_PROC_ADDRESS_HASH, &eng));
+  auto pVirtualAlloc = reinterpret_cast<VIRTUAL_ALLOC>(GetExportAddrFromHash(pbKernel32Dll, VIRTUAL_ALLOC_HASH, &eng));
+  auto pFlushInstructionCache = reinterpret_cast<FLUSH_INSTRUCTION_CACHE>(GetExportAddrFromHash(pbKernel32Dll, FLUSH_INSTRUCTION_CACHE_HASH, &eng));
+  auto pVirtualProtect = reinterpret_cast<VIRTUAL_PROTECT>(GetExportAddrFromHash(pbKernel32Dll, VIRTUAL_PROTECT_HASH, &eng));
+  auto pSleep = reinterpret_cast<SLEEP>(GetExportAddrFromHash(pbKernel32Dll, SLEEP_HASH, &eng));
 
   if (pLoadLibraryW == nullptr || pGetProcAddress == nullptr || pVirtualAlloc == nullptr || pFlushInstructionCache == nullptr || pVirtualProtect == nullptr || pSleep == nullptr) {
     return;
@@ -80,7 +80,7 @@ void Load(PBYTE pImage, DWORD dwFunctionHash, PVOID pvUserData, DWORD dwUserData
       4.) Resolve the imports by patching the Import Address Table (IAT)
   */
 
-  if (!PatchImportAddressTable(pNewImageBase, pDataDir, pLoadLibraryW, pGetProcAddress, pSleep, eng)) {
+  if (!PatchImportAddressTable(pNewImageBase, pDataDir, pLoadLibraryW, pGetProcAddress, pSleep, &eng)) {
     return;
   }
 
@@ -102,7 +102,7 @@ void Load(PBYTE pImage, DWORD dwFunctionHash, PVOID pvUserData, DWORD dwUserData
   } else {
     // Execute user defined function
     auto pbNewImageBase = reinterpret_cast<PBYTE>(pNewImageBase);
-    auto pUserFunction = reinterpret_cast<USER_FUNCTION>(GetExportAddrFromHash(pbNewImageBase, dwFunctionHash, eng));
+    auto pUserFunction = reinterpret_cast<USER_FUNCTION>(GetExportAddrFromHash(pbNewImageBase, dwFunctionHash, &eng));
     pUserFunction(pvUserData, dwUserDataLen);
   }
 }
@@ -160,7 +160,7 @@ void FinalizeRelocations(ULONG_PTR pNewImageBase, PIMAGE_NT_HEADERS64 pNtHeaders
   pFlushInstructionCache(INVALID_HANDLE_VALUE, nullptr, 0);
 }
 
-BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, LOAD_LIBRARY_W pLoadLibraryW, GET_PROC_ADDRESS pGetProcAddress, SLEEP pSleep, const std::mt19937 &eng) {
+BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDataDirectory, LOAD_LIBRARY_W pLoadLibraryW, GET_PROC_ADDRESS pGetProcAddress, SLEEP pSleep, std::mt19937 *eng) {
   auto pImportDescriptor = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(pNewImageBase + pDataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 
   if (pImportDescriptor == nullptr) {
@@ -188,7 +188,7 @@ BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDat
   if (importCount > 1 && OBFUSCATE_IMPORTS) {
     for (auto i = 0; i < importCount - 1; i++) {
       std::uniform_int_distribution<> distr(i, importCount - 1);
-      int j = distr(eng);
+      int j = distr(*eng);
 
       // Swap
       auto tmp = pImportDescriptor[i];
@@ -196,7 +196,7 @@ BOOL PatchImportAddressTable(ULONG_PTR pNewImageBase, PIMAGE_DATA_DIRECTORY pDat
       pImportDescriptor[j] = tmp;
 
       // Store unique sleep durations with their corresponding import index
-      auto sleepTime = sleepDist(eng);
+      auto sleepTime = sleepDist(*eng);
       sleepDurations.push_back(std::make_pair(i, sleepTime));
     }
   }
@@ -330,7 +330,7 @@ PBYTE GetModuleAddressFromHash(DWORD dwHash) {
   return nullptr;
 }
 
-HMODULE GetExportAddrFromHash(PBYTE pbModule, DWORD dwHash, const std::mt19937 &eng) {
+HMODULE GetExportAddrFromHash(PBYTE pbModule, DWORD dwHash, std::mt19937 *eng) {
   auto pNtHeaders = GetNtHeaders(pbModule);
 
   if (pNtHeaders == nullptr) {
@@ -354,7 +354,7 @@ HMODULE GetExportAddrFromHash(PBYTE pbModule, DWORD dwHash, const std::mt19937 &
     vNameRvas.push_back(std::make_tuple(dwNameRva, i));
   }
 
-  std::shuffle(vNameRvas.begin(), vNameRvas.end(), eng);
+  std::shuffle(vNameRvas.begin(), vNameRvas.end(), *eng);
 
   DWORD dwNameHash, dwFunctionRva;
   UNICODE_STRING *strFunctionNameBase;
