@@ -9,7 +9,8 @@
 
 int main(int argc, char **argv) {
   if (argc != 3) {
-    std::cout << "[?] Usage: " << argv[0] << " <shellcode-path> <xor-keyfile-path>" << std::endl;
+    std::cout << "\nUsage: " << argv[0] << " <shellcode-path> <xor-keyfile-path>\n"
+              << std::endl;
     return 1;
   }
 

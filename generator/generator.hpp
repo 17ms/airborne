@@ -5,6 +5,6 @@
 
 #include <iostream>
 
-constexpr auto BOOTSTRAP_LEN = 79;
+constexpr auto BOOTSTRAP_LEN = 85;
 
 void PrintHelp(char **argv);

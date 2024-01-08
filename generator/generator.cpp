@@ -10,21 +10,30 @@ int main(int argc, char **argv) {
   uint8_t flag = false;
   std::string loaderPath, payloadPath, funcName, funcParameter, outputPath;
 
+  const char *shortOptions = "l:p:n:a:o:fh";
   static struct option longOptions[] = {
-      {"loader", required_argument, 0, 'l'},
-      {"payload", required_argument, 0, 'p'},
-      {"function", required_argument, 0, 'n'},
-      {"parameter", required_argument, 0, 'a'},
-      {"output", required_argument, 0, 'o'},
-      {"flag", no_argument, 0, 'f'},
-      {"help", no_argument, 0, 'h'},
-      {0, 0, 0, 0}};
+      {"loader", required_argument, nullptr, 'l'},
+      {"payload", required_argument, nullptr, 'p'},
+      {"function", required_argument, nullptr, 'n'},
+      {"parameter", required_argument, nullptr, 'a'},
+      {"output", required_argument, nullptr, 'o'},
+      {"flag", no_argument, nullptr, 'f'},
+      {"help", no_argument, nullptr, 'h'},
+  };
 
-  auto optionIndex = 0;
-  int c;
+  if (argc < 9) {
+    PrintHelp(argv);
+    return 1;
+  }
 
-  while ((c = getopt_long(argc, argv, "l:p:n:a:o:fh", longOptions, &optionIndex))) {
-    switch (c) {
+  while (1) {
+    const auto opt = getopt_long(argc, argv, shortOptions, longOptions, nullptr);
+
+    if (-1 == opt) {
+      break;
+    }
+
+    switch (opt) {
       case 'l':
         loaderPath = optarg;
         break;
@@ -50,12 +59,6 @@ int main(int argc, char **argv) {
         PrintHelp(argv);
         return 1;
     }
-  }
-
-  if (loaderPath.empty() || payloadPath.empty() || funcName.empty() || funcParameter.empty(), outputPath.empty()) {
-    std::cout << "[!] Missing required arguments" << std::endl;
-    PrintHelp(argv);
-    return 1;
   }
 
   std::cout << "[+] Loader path: " << loaderPath << std::endl;
@@ -249,14 +252,15 @@ int main(int argc, char **argv) {
 }
 
 void PrintHelp(char **argv) {
-  std::cout << "Usage: " << argv[0] << " [ARGUMENTS] [OPTIONS]" << std::endl;
-  std::cout << "\nArguments:" << std::endl;
+  std::cout << "\nUsage: " << argv[0] << " [ARGUMENTS] [OPTIONS]" << std::endl;
+  std::cout << "\nArguments (required):" << std::endl;
   std::cout << "\t-l, --loader      Path to loader file" << std::endl;
   std::cout << "\t-p, --payload     Path to payload file" << std::endl;
   std::cout << "\t-n, --function    Function name to call inside payload" << std::endl;
   std::cout << "\t-a, --parameter   Function parameter to pass to the called function" << std::endl;
   std::cout << "\t-o, --output      Path to output file" << std::endl;
   std::cout << "\nOptions:" << std::endl;
-  std::cout << "\t-f, --flag        Flag to enable debug mode" << std::endl;
-  std::cout << "\t-h, --help        Print this help message" << std::endl;
+  std::cout << "\t-f, --flag        Flag to run defined payload's defined function instead of DllMain" << std::endl;
+  std::cout << "\t-h, --help        Print this help message\n"
+            << std::endl;
 }
