@@ -1,4 +1,4 @@
-# Shellcode reflective DLL injection in C++
+# Shellcode reflective DLL injection in Rust
 
 Reflective DLL injection demo for fun and education. In practical applications, there's significant scope for enhancing build sizes, obfuscation, and delivery logic.
 
@@ -8,26 +8,31 @@ Reflective DLL injection demo for fun and education. In practical applications, 
 
 ```shell
 .
-├── build.sh            # Build script (cmake & make)
 ├── generator           # Shellcode generator (ties together bootstrap, loader, payload, and user data)
 ├── injector            # PoC injector
-├── payload             # PoC payload (DllMain & PrintMessage(lpUserData))
-├── reflective_loader   # sRDI implementation
-├── shared              # Common cryptographic & file modules
-└── toolchains          # Cross-compilation toolchains (linux & darwin)
+├── payload             # PoC payload (DllMain and PrintMessage)
+└── reflective_loader   # sRDI implementation
 ```
 
 ### Features
 
+- Compact filesize (~14 kB)
 - Hashed import names & indirect function calls
-- Randomized export iteration & IAT patching
-- XOR encryption for shellcode (randomized key generated during shellcode generation)
+- Randomized payload export iteration & IAT patching
+- XOR encryption for shellcode (shellcode generation specific keys)
 
 Check out [Alcatraz](https://github.com/weak1337/Alcatraz/) for additional obfuscation for the shellcode/injector.
 
 ### Usage
 
-Compile the libraries and executables with the included `build.sh` shellscript (if cross-compiling).
+The following command compiles the DLLs and executables into `target`:
+
+```shell
+$ cargo build --release
+```
+
+1. Generate shellcode containing the loader and the payload
+2. Inject the created shellcode into target
 
 ### Disclaimer
 

@@ -1,0 +1,20 @@
+[package]
+name = "airborne-reflective_loader"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+airborne-utils = { path = "../utils" }
+rand_core = "0.6.0"
+
+[dependencies.windows-sys]
+version = "0.52.0"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Kernel",
+    "Win32_System_Threading",
+    "Win32_System_WindowsProgramming"
+]
