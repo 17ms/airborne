@@ -3,7 +3,8 @@ use core::ffi::c_void;
 use windows_sys::{
     core::PCSTR,
     Win32::{
-        Foundation::{BOOL, BOOLEAN, FARPROC, HANDLE, HMODULE, UNICODE_STRING},
+        Foundation::{BOOL, BOOLEAN, FARPROC, HANDLE, HMODULE, NTSTATUS, UNICODE_STRING},
+        Security::Cryptography::{BCRYPTGENRANDOM_FLAGS, BCRYPT_ALG_HANDLE},
         System::{
             Kernel::LIST_ENTRY,
             Memory::{PAGE_PROTECTION_FLAGS, VIRTUAL_ALLOCATION_TYPE},
@@ -16,6 +17,9 @@ pub static KERNEL32_DLL: u32 = 0x6DDB9555;
 
 #[allow(non_snake_case)]
 pub static NTDLL_DLL: u32 = 0x1EDAB0ED;
+
+#[allow(non_snake_case)]
+pub static BCRYPT_DLL: u32 = 0xEDB54DA3;
 
 #[allow(non_snake_case)]
 pub static LOAD_LIBRARY_A: u32 = 0xB7072FDB;
@@ -34,6 +38,9 @@ pub static VIRTUAL_PROTECT: u32 = 0xE857500D;
 
 #[allow(non_snake_case)]
 pub static SLEEP: u32 = 0xE07CD7E;
+
+#[allow(non_snake_case)]
+pub static BCRYPT_GEN_RANDOM: u32 = 0xD966C0D4;
 
 #[allow(non_camel_case_types)]
 pub type LoadLibraryA = unsafe extern "system" fn(lpLibFileName: PCSTR) -> HMODULE;
@@ -65,6 +72,14 @@ pub type FlushInstructionCache = unsafe extern "system" fn(
 ) -> BOOL;
 
 #[allow(non_camel_case_types)]
+pub type BCryptGenRandom = unsafe extern "system" fn(
+    hAlgorithm: BCRYPT_ALG_HANDLE,
+    pbBuffer: *mut u8,
+    cbBuffer: u32,
+    dwFlags: BCRYPTGENRANDOM_FLAGS,
+) -> NTSTATUS;
+
+#[allow(non_camel_case_types)]
 pub type Sleep = unsafe extern "system" fn(dwMilliseconds: u32);
 
 #[allow(non_camel_case_types)]
@@ -84,6 +99,7 @@ pub struct FarProcs {
     pub VirtualProtect: VirtualProtect,
     pub FlushInstructionCache: FlushInstructionCache,
     pub Sleep: Sleep,
+    pub BCryptGenRandom: BCryptGenRandom,
 }
 
 #[allow(non_camel_case_types)]

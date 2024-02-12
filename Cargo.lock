@@ -33,7 +33,6 @@ name = "airborne-reflective_loader"
 version = "0.1.0"
 dependencies = [
  "airborne-utils",
- "rand_core",
  "windows-sys",
 ]
 
