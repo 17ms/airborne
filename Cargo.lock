@@ -3,40 +3,6 @@
 version = 3
 
 [[package]]
-name = "airborne-generator"
-version = "0.1.0"
-dependencies = [
- "airborne-utils",
- "clap",
- "rand",
- "windows-sys",
-]
-
-[[package]]
-name = "airborne-injector"
-version = "0.1.0"
-dependencies = [
- "airborne-utils",
- "lexopt",
- "windows-sys",
-]
-
-[[package]]
-name = "airborne-payload"
-version = "0.1.0"
-dependencies = [
- "windows-sys",
-]
-
-[[package]]
-name = "airborne-reflective_loader"
-version = "0.1.0"
-dependencies = [
- "airborne-utils",
- "windows-sys",
-]
-
-[[package]]
 name = "airborne-utils"
 version = "0.1.0"
 
@@ -141,6 +107,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 
 [[package]]
+name = "generator"
+version = "0.1.0"
+dependencies = [
+ "airborne-utils",
+ "clap",
+ "rand",
+ "windows-sys",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -168,6 +144,22 @@ name = "libc"
 version = "0.2.152"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13e3bf6590cbc649f4d1a3eefc9d5d6eb746f5200ffb04e5e142700b8faa56e7"
+
+[[package]]
+name = "poc-injector"
+version = "0.1.0"
+dependencies = [
+ "airborne-utils",
+ "lexopt",
+ "windows-sys",
+]
+
+[[package]]
+name = "poc-payload"
+version = "0.1.0"
+dependencies = [
+ "windows-sys",
+]
 
 [[package]]
 name = "ppv-lite86"
@@ -221,6 +213,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
+]
+
+[[package]]
+name = "reflective-loader"
+version = "0.1.0"
+dependencies = [
+ "airborne-utils",
+ "windows-sys",
 ]
 
 [[package]]

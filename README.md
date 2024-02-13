@@ -33,30 +33,31 @@ $ cargo build --release
 1. Generate shellcode containing the loader and the payload:
 
 ```
-Usage: airborne-generator.exe [OPTIONS] --loader <LOADER_PATH> --payload <PAYLOAD_PATH> --function <FUNCTION_NAME> --parameter <PARAMETER> --output <OUTPUT_PATH>
+Usage: generator.exe [OPTIONS] --loader <LOADER_PATH> --payload <PAYLOAD_PATH> --function <FUNCTION_NAME> --parameter <PARAMETER> --output <OUTPUT_PATH>
 
 Options:
--l, --loader <LOADER_PATH>      Path to the sRDI loader DLL
--p, --payload <PAYLOAD_PATH>    Path to the payload DLL
--f, --function <FUNCTION_NAME>  Name of the function to call in the payload DLL
--n, --parameter <PARAMETER>     Parameter to pass to the function
--o, --output <OUTPUT_PATH>      Path to the output file
--f, --flag <FLAG>               Flag to pass to the loader (by default DllMain is called) [default: 0]
--h, --help                      Print help
--V, --version                   Print version
+  -l, --loader <LOADER_PATH>      Path to the sRDI loader DLL
+  -p, --payload <PAYLOAD_PATH>    Path to the payload DLL
+  -f, --function <FUNCTION_NAME>  Name of the function to call in the payload DLL
+  -n, --parameter <PARAMETER>     Parameter to pass to the function
+  -o, --output <OUTPUT_PATH>      Path to the output file
+  -f, --flag <FLAG>               Flag to pass to the loader (by default DllMain is called) [default: 0]
+  -h, --help                      Print help
+  -V, --version                   Print version
 ```
 
 2. Inject the created shellcode into target:
 
 ```
-Usage: airborne-injector.exe -p <process_name> -s <shellcode_path> -k <keyfile_path>
+Usage: poc-injector.exe -p <PROCESS_NAME> -s <SHELLCODE_PATH> -k <KEYFILE_PATH>
 ```
 
-3. Depending on the flag passed to the generator, either payload's `DllMain` or user defined function will run:
+3. Depending on the flag passed to the generator, either payload's `DllMain` with `DLL_PROCESS_ATTACH` or user defined function will run:
 
-![Payload's DllMain execution with the default flag (0)](/.github/docs/dllmain-exec.png)
-
-![Payload's user defined function execution with the modified flag (1)](/.github/docs/userfunction-exec.png)
+<div align="center">
+    <img src=".github/docs/dllmain-exec.png" alt="Payload's DllMain execution with the default flag (0)" width="90%">
+    <img src=".github/docs/userfunction-exec.png" alt="Payload's user defined function execution with the modified flag (1)" width="90%">
+</div>
 
 ### Disclaimer
 

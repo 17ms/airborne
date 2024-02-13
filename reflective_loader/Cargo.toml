@@ -1,5 +1,5 @@
 [package]
-name = "airborne-reflective_loader"
+name = "reflective-loader"
 version = "0.1.0"
 edition = "2021"
 
