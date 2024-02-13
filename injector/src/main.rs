@@ -85,5 +85,7 @@ fn parse_args() -> Args {
 }
 
 fn print_usage() {
-    println!("Usage: injector.exe -p <process_name> -s <shellcode_path> -k <keyfile_path>");
+    println!(
+        "Usage: airborne-injector.exe -p <process_name> -s <shellcode_path> -k <keyfile_path>"
+    );
 }

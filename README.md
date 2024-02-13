@@ -9,30 +9,54 @@ Reflective DLL injection demo for fun and education. In practical applications, 
 ```shell
 .
 ├── generator           # Shellcode generator (ties together bootstrap, loader, payload, and user data)
-├── injector            # PoC injector
-├── payload             # PoC payload (DllMain and PrintMessage)
-└── reflective_loader   # sRDI implementation
+├── injector            # PoC injector (CreateRemoteThread)
+├── payload             # PoC payload (calc.exe or MessageBoxW based on generator's flag)
+├── reflective_loader   # sRDI implementation
+└── utils               # Common XOR and hashing functions
 ```
 
 ### Features
 
-- Compact filesize (~14 kB)
+- ~14 kB reflective loader
 - Hashed import names & indirect function calls
-- Randomized payload export iteration & IAT patching
-- XOR encryption for shellcode (shellcode generation specific keys)
-
-Check out [Alcatraz](https://github.com/weak1337/Alcatraz/) for additional obfuscation for the shellcode/injector.
+- XOR encrypted payload shellcode
+- Shuffled and delayed IDT iteration (during IAT patching)
 
 ### Usage
 
-The following command compiles the DLLs and executables into `target`:
+The following command compiles the DLLs and executables into `target/release/`:
 
 ```shell
 $ cargo build --release
 ```
 
-1. Generate shellcode containing the loader and the payload
-2. Inject the created shellcode into target
+1. Generate shellcode containing the loader and the payload:
+
+```
+Usage: airborne-generator.exe [OPTIONS] --loader <LOADER_PATH> --payload <PAYLOAD_PATH> --function <FUNCTION_NAME> --parameter <PARAMETER> --output <OUTPUT_PATH>
+
+Options:
+-l, --loader <LOADER_PATH>      Path to the sRDI loader DLL
+-p, --payload <PAYLOAD_PATH>    Path to the payload DLL
+-f, --function <FUNCTION_NAME>  Name of the function to call in the payload DLL
+-n, --parameter <PARAMETER>     Parameter to pass to the function
+-o, --output <OUTPUT_PATH>      Path to the output file
+-f, --flag <FLAG>               Flag to pass to the loader (by default DllMain is called) [default: 0]
+-h, --help                      Print help
+-V, --version                   Print version
+```
+
+2. Inject the created shellcode into target:
+
+```
+Usage: airborne-injector.exe -p <process_name> -s <shellcode_path> -k <keyfile_path>
+```
+
+3. Depending on the flag passed to the generator, either payload's `DllMain` or user defined function will run:
+
+![Payload's DllMain execution with the default flag (0)](/.github/docs/dllmain-exec.png)
+
+![Payload's user defined function execution with the modified flag (1)](/.github/docs/userfunction-exec.png)
 
 ### Disclaimer
 
