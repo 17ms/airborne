@@ -52,7 +52,7 @@ Options:
 Usage: poc-injector.exe -p <PROCESS_NAME> -s <SHELLCODE_PATH> -k <KEYFILE_PATH>
 ```
 
-3. Depending on the flag passed to the generator, either payload's `DllMain` with `DLL_PROCESS_ATTACH` or user defined function will run:
+3. Depending on the flag passed to the generator, either `DllMain` with `DLL_PROCESS_ATTACH` or user function with custom parameter is called:
 
 <div align="center">
     <img src=".github/docs/dllmain-exec.png" alt="Payload's DllMain execution with the default flag (0)" width="90%">
