@@ -41,7 +41,7 @@ Options:
   -f, --function <FUNCTION_NAME>  Name of the function to call in the payload DLL
   -n, --parameter <PARAMETER>     Parameter to pass to the function
   -o, --output <OUTPUT_PATH>      Path to the output file
-  -f, --flag <FLAG>               Flag to pass to the loader (by default DllMain is called) [default: 0]
+      --flag <FLAG>               Flag to pass to the loader (by default DllMain is called) [default: 0]
   -h, --help                      Print help
   -V, --version                   Print version
 ```

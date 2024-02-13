@@ -29,7 +29,7 @@ struct Args {
     #[arg(short, long = "output")]
     output_path: PathBuf,
     /// Flag to pass to the loader (by default DllMain is called)
-    #[arg(short, long, default_value_t = 0)]
+    #[arg(long, default_value_t = 0)]
     flag: u32, // preferably set type as u32 here instead of casting it when generating bootstrap
 }
 
