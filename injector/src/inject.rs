@@ -1,4 +1,4 @@
-use std::{mem::transmute, ptr::null_mut};
+use std::{error::Error, mem::transmute, ptr::null_mut};
 
 use windows_sys::Win32::{
     Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
@@ -9,13 +9,13 @@ use windows_sys::Win32::{
     },
 };
 
-pub unsafe fn inject(pid: u32, dll_vec: Vec<u8>) {
+pub unsafe fn inject(pid: u32, dll_vec: Vec<u8>) -> Result<(), Box<dyn Error>> {
     let dll_len = dll_vec.len();
 
     let h_process = OpenProcess(PROCESS_ALL_ACCESS, 0, pid);
 
     if h_process == INVALID_HANDLE_VALUE {
-        panic!("failed to open process");
+        return Err(format!("failed to open process {}", pid).into());
     }
 
     let base_addr_ptr = VirtualAllocEx(
@@ -27,7 +27,7 @@ pub unsafe fn inject(pid: u32, dll_vec: Vec<u8>) {
     );
 
     if base_addr_ptr.is_null() {
-        panic!("failed to allocate memory");
+        return Err(format!("failed to allocate memory into process {}", pid).into());
     }
 
     println!("[+] allocated memory at {:p}", base_addr_ptr);
@@ -40,7 +40,7 @@ pub unsafe fn inject(pid: u32, dll_vec: Vec<u8>) {
         null_mut(),
     ) == 0
     {
-        panic!("failed to write process memory");
+        return Err(format!("failed to write process memory into process {}", pid).into());
     }
 
     let h_thread = CreateRemoteThread(
@@ -54,9 +54,11 @@ pub unsafe fn inject(pid: u32, dll_vec: Vec<u8>) {
     );
 
     if h_thread == INVALID_HANDLE_VALUE {
-        panic!("failed to create remote thread");
+        return Err(format!("failed to create remote thread into process {}", pid).into());
     }
 
     CloseHandle(h_thread);
     CloseHandle(h_process);
+
+    Ok(())
 }

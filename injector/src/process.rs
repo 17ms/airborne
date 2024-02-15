@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+use std::{error::Error, ffi::CStr};
 
 use windows_sys::Win32::{
     Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
@@ -7,31 +7,31 @@ use windows_sys::Win32::{
     },
 };
 
-fn snapshot() -> isize {
+fn snapshot() -> Result<isize, Box<dyn Error>> {
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
 
     if snapshot == INVALID_HANDLE_VALUE {
-        panic!("failed to create snapshot");
+        return Err("failed to create toolhelp snapshot".into());
     }
 
-    snapshot
+    Ok(snapshot)
 }
 
-unsafe fn first_proc_entry(snapshot: isize) -> PROCESSENTRY32 {
+unsafe fn first_proc_entry(snapshot: isize) -> Result<PROCESSENTRY32, Box<dyn Error>> {
     let mut pe: PROCESSENTRY32 = std::mem::zeroed();
     pe.dwSize = std::mem::size_of::<PROCESSENTRY32>() as _;
 
     if Process32First(snapshot, &mut pe) == 0 {
         CloseHandle(snapshot);
-        panic!("failed to get first process entry");
+        return Err("failed to get first process entry".into());
     }
 
-    pe
+    Ok(pe)
 }
 
-pub unsafe fn iterate_procs(target_name: &str) -> Option<u32> {
-    let snapshot = snapshot();
-    let mut pe = first_proc_entry(snapshot);
+pub unsafe fn iterate_procs(target_name: &str) -> Result<Option<u32>, Box<dyn Error>> {
+    let snapshot = snapshot()?;
+    let mut pe = first_proc_entry(snapshot)?;
 
     loop {
         let proc_name = CStr::from_ptr(pe.szExeFile.as_ptr() as _)
@@ -43,14 +43,15 @@ pub unsafe fn iterate_procs(target_name: &str) -> Option<u32> {
             println!("[+] {}: {}", pid, proc_name);
             CloseHandle(snapshot);
 
-            return Some(pid);
-        } else if Process32Next(snapshot, &mut pe) == 0 {
+            return Ok(Some(pid));
+        }
+
+        if Process32Next(snapshot, &mut pe) == 0 {
             break;
         }
     }
 
-    println!("[-] process with name {} not found", target_name);
     CloseHandle(snapshot);
 
-    None
+    Ok(None)
 }

