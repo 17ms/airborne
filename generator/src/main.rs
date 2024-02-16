@@ -4,7 +4,7 @@ use std::{
 };
 
 use airborne_utils::calc_hash;
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use windows_sys::Win32::{
     System::Diagnostics::Debug::IMAGE_NT_HEADERS64,
     System::{
@@ -31,9 +31,15 @@ struct Args {
     /// Path to the output file
     #[arg(short, long = "output")]
     output_path: PathBuf,
-    /// Flag to pass to the loader (by default DllMain is called)
-    #[arg(long, default_value_t = 0)]
-    flag: u32, // preferably set type as u32 here instead of casting it when generating bootstrap
+    /// Disable randomized delays during IAT patching
+    #[arg(short, long, action = ArgAction::SetFalse, default_value_t = true)]
+    no_delay: bool,
+    /// Disable IAT import descriptor shuffling
+    #[arg(short, long, action = ArgAction::SetFalse, default_value_t = true)]
+    no_shuffle: bool,
+    /// Call payload's user defined function instead of DllMain
+    #[arg(short, long, action = ArgAction::SetTrue, default_value_t = false)]
+    ufn: bool,
 }
 
 // NOTE: must be updated accordingly if the loader name or the bootstrap code is modified
@@ -42,6 +48,9 @@ const BOOTSTRAP_TOTAL_LENGTH: u32 = 79;
 
 fn main() {
     let args = Args::parse();
+
+    // (bool, bool, bool) -(OR)-> u32
+    let combined_flag = airborne_utils::create_u32_flag(args.no_delay, args.no_shuffle, args.ufn);
 
     // preserve the path from being dropped
     let output_path = args.output_path.clone();
@@ -77,7 +86,7 @@ fn main() {
         &mut payload_b,
         function_hash,
         args.parameter,
-        args.flag,
+        combined_flag,
     ) {
         Ok(sc) => sc,
         Err(e) => {

