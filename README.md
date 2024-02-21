@@ -12,7 +12,7 @@ Reflective DLL injection demo for fun and education. In practical applications, 
 ├── injector            # PoC injector (CreateRemoteThread)
 ├── payload             # PoC payload (calc.exe or MessageBoxW based on generator's flag)
 ├── reflective_loader   # sRDI implementation
-└── utils               # Common XOR and hashing functions
+└── common              # Common XOR and hashing functions
 ```
 
 ### Features
