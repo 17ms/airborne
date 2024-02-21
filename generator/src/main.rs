@@ -3,7 +3,7 @@ use std::{
     slice::from_raw_parts,
 };
 
-use airborne_utils::calc_hash;
+use airborne_common::calc_hash;
 use clap::{ArgAction, Parser};
 use windows_sys::Win32::{
     System::Diagnostics::Debug::IMAGE_NT_HEADERS64,
@@ -50,7 +50,7 @@ fn main() {
     let args = Args::parse();
 
     // (bool, bool, bool) -(OR)-> u32
-    let combined_flag = airborne_utils::create_u32_flag(args.no_delay, args.no_shuffle, args.ufn);
+    let combined_flag = airborne_common::create_u32_flag(args.no_delay, args.no_shuffle, args.ufn);
 
     // preserve the path from being dropped
     let output_path = args.output_path.clone();
@@ -97,7 +97,7 @@ fn main() {
 
     println!("\n[+] xor'ing shellcode");
     let key = gen_xor_key(shellcode.len());
-    airborne_utils::xor_cipher(&mut shellcode, &key);
+    airborne_common::xor_cipher(&mut shellcode, &key);
     let mut key_output_path = output_path.clone().into_os_string();
     key_output_path.push(".key");
 

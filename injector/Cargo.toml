@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 lexopt = "0.3.0"
-airborne-utils = { path = "../utils" }
+airborne-common = { path = "../common" }
 
 [dependencies.windows-sys]
 version = "0.52.0"

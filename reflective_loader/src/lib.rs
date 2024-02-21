@@ -10,7 +10,7 @@ use core::{
     slice::from_raw_parts,
 };
 
-use airborne_utils::Flags;
+use airborne_common::Flags;
 use windows_sys::{
     core::PWSTR,
     Win32::{
@@ -67,7 +67,7 @@ pub unsafe extern "system" fn loader(
     _shellcode_bin: *mut c_void,
     flags: u32,
 ) {
-    let flags = airborne_utils::parse_u32_flag(flags);
+    let flags = airborne_common::parse_u32_flag(flags);
 
     /*
         1.) locate the required functions and modules from exports with their hashed names
@@ -238,7 +238,7 @@ unsafe fn get_module_ptr(module_hash: u32) -> Option<*mut u8> {
         let name_slice_buf = from_raw_parts(transmute::<PWSTR, *const u8>(name_buf_ptr), name_len);
 
         // calculate the module hash and compare it
-        if module_hash == airborne_utils::calc_hash(name_slice_buf) {
+        if module_hash == airborne_common::calc_hash(name_slice_buf) {
             return Some((*table_entry_ptr).DllBase as _);
         }
 
@@ -293,7 +293,7 @@ unsafe fn get_export_addr(module_base_ptr: *mut u8, function_hash: u32) -> Optio
         let name_len = get_cstr_len(name_ptr as _);
         let name_slice = from_raw_parts(name_ptr as _, name_len);
 
-        if function_hash == airborne_utils::calc_hash(name_slice) {
+        if function_hash == airborne_common::calc_hash(name_slice) {
             return Some(module_base_ptr as usize + funcs[ords[i as usize] as usize] as usize);
         }
     }

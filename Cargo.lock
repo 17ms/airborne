@@ -3,7 +3,7 @@
 version = 3
 
 [[package]]
-name = "airborne-utils"
+name = "airborne-common"
 version = "0.1.0"
 
 [[package]]
@@ -110,7 +110,7 @@ checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 name = "generator"
 version = "0.1.0"
 dependencies = [
- "airborne-utils",
+ "airborne-common",
  "clap",
  "rand",
  "windows-sys",
@@ -149,7 +149,7 @@ checksum = "13e3bf6590cbc649f4d1a3eefc9d5d6eb746f5200ffb04e5e142700b8faa56e7"
 name = "poc-injector"
 version = "0.1.0"
 dependencies = [
- "airborne-utils",
+ "airborne-common",
  "lexopt",
  "windows-sys",
 ]
@@ -219,7 +219,7 @@ dependencies = [
 name = "reflective-loader"
 version = "0.1.0"
 dependencies = [
- "airborne-utils",
+ "airborne-common",
  "windows-sys",
 ]
 

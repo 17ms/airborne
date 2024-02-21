@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-airborne-utils = { path = "../utils" }
+airborne-common = { path = "../common" }
 
 [dependencies.windows-sys]
 version = "0.52.0"

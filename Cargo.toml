@@ -6,7 +6,7 @@ members = [
     "payload",
     "generator",
     "reflective_loader", 
-    "utils"
+    "common"
 ]
 
 [profile.release]

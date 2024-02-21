@@ -51,7 +51,7 @@ fn main() {
     }
 
     println!("[+] xor'ing shellcode");
-    airborne_utils::xor_cipher(&mut shellcode, &keyfile);
+    airborne_common::xor_cipher(&mut shellcode, &keyfile);
 
     println!("[+] injecting shellcode into {}", args.procname);
     unsafe {
